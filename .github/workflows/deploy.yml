@@ -55,6 +55,8 @@ jobs:
 
       - run: python -m unittest discover -s backend -v
 
+      - run: node --test tests/auth.mjs
+
       - run: npm ci
         working-directory: frontend
 

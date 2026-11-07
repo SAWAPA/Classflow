@@ -1,0 +1,47 @@
+name: Consolidate a duplicate Google account
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: Email of the original and duplicate Google account
+        required: true
+        type: string
+      apply:
+        description: Delete the empty Google duplicate and link it to the original account
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: classflow-production
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install boto3
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-2
+      - name: Inspect or consolidate only the requested email
+        env:
+          REPAIR_EMAIL: ${{ inputs.email }}
+          APPLY_REPAIR: ${{ inputs.apply }}
+          EXPECTED_ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          ARGS=()
+          if [ "$APPLY_REPAIR" = "true" ]; then ARGS+=(--apply); fi
+          python scripts/repair_google_account.py --email "$REPAIR_EMAIL" --allow-account "$EXPECTED_ACCOUNT" "${ARGS[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: account-repair-backup
+          path: .local/account-repair-backup.json
+          retention-days: 7

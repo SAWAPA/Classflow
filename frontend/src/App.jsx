@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react';
 import {BookOpen, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X} from 'lucide-react';
-import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode} from './api';
+import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode, signOut} from './api';
 import {Avatar, Badge, Btn, Empty} from './ui';
 import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading} from './forms';
 import AdminPanel from './Admin';
@@ -13,7 +13,7 @@ export default function App() {
   const [session, setSession] = useState(getSession), [boot, setBoot] = useState(null), [bootError, setBootError] = useState(''), [cid, setCid] = useState(''), [state, setState] = useState(null), [tab, setTab] = useState('stream'), [modal, setModal] = useState(null), [detail, setDetail] = useState(null), [grading, setGrading] = useState(null), [toast, setToast] = useState(''), [loading, setLoading] = useState(false);
   function notify(message) {setToast(message);}
   function login(value) {saveSession(value); setSession(value); setBoot(null); setBootError(''); setState(null); setCid('');}
-  function logout() {saveSession(null); setSession(null); setState(null); setBoot(null); setBootError(''); setCid('');}
+  function logout() {const pending = signOut(); setSession(null); setState(null); setBoot(null); setBootError(''); setCid(''); setModal(null); setDetail(null); setGrading(null); pending.catch(error => notify(error.message));}
   async function bootstrap(nextId) {setBootError(''); try {const r = await rpc('bootstrap'); setBoot(r); setCid(prior => nextId || prior || r.courses[0]?.id || ''); return r;} catch (error) {setBootError(error.message); throw error;}}
   async function refresh() {if (cid) setState(await rpc('getClass', {classId: cid}));}
   useEffect(() => {if (session) bootstrap().catch(e => notify(e.message));}, [session]);

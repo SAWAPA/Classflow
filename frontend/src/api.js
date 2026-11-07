@@ -3,6 +3,22 @@ export const isLocal = import.meta.env.DEV && ['localhost', '127.0.0.1'].include
 const key = 'classflow-session';
 export const getSession = () => { try { return JSON.parse(sessionStorage.getItem(key)); } catch { return null; } };
 export const saveSession = value => value ? sessionStorage.setItem(key, JSON.stringify(value)) : sessionStorage.removeItem(key);
+export async function signOut() {
+  const session = getSession();
+  saveSession(null);
+  sessionStorage.removeItem('classflow-google-state');
+  if (isLocal) return;
+  // Revoke this login's refresh token, then clear Cognito's hosted cookie.
+  // Google's own cookie can remain: select_account requests a chooser each time.
+  if (session?.refreshToken) {
+    try {await cognito('RevokeToken', {Token: session.refreshToken});} catch {}
+  }
+  const domain = config.cognitoDomain;
+  if (domain && config.clientId) {
+    const query = new URLSearchParams({client_id: config.clientId, logout_uri: window.location.origin + '/'});
+    window.location.assign(`${domain.replace(/\/$/, '')}/logout?${query}`);
+  }
+}
 export async function cognito(action, body) {
   if (!config.clientId || !config.region) throw new Error('ยังไม่ได้ตั้งค่า AWS ของ Classroom กรุณา deploy สแตกใหม่ก่อน');
   const response = await fetch(`https://cognito-idp.${config.region}.amazonaws.com/`, {method: 'POST', headers: {
@@ -48,6 +64,7 @@ export function getGoogleAuthUrl() {
   if (!domain || !config.clientId || config.googleEnabled === false || config.googleEnabled === 'false')
     return null;
   const state = crypto.randomUUID ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+  saveSession(null);
   sessionStorage.setItem('classflow-google-state', state);
   const redirectUri = window.location.origin + '/';
   // Always ask Google to show the account chooser. This prevents a previous
@@ -58,6 +75,10 @@ export function getGoogleAuthUrl() {
 
 export async function exchangeGoogleCode() {
   const params = new URLSearchParams(window.location.search);
+  if (params.has('error')) {
+    sessionStorage.removeItem('classflow-google-state');
+    throw new Error(params.get('error_description') || 'ยกเลิกการเข้าสู่ระบบด้วย Google');
+  }
   const code = params.get('code');
   if (!code) return null;
   const expectedState = sessionStorage.getItem('classflow-google-state');

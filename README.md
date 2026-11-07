@@ -110,6 +110,14 @@ scripts/publish.py เป็นทางเลือกสำรองสำห�
 
 จากนั้นนำ Client ID และ Client Secret ไปใส่ใน GitHub repository secrets ชื่อ `GOOGLE_CLIENT_ID` และ `GOOGLE_CLIENT_SECRET` แล้ว push เข้า `main` อีกครั้ง ระบบจะสร้าง Cognito domain, Google identity provider และเปิดปุ่ม Google Login ให้อัตโนมัติ ค่าลับจะถูกส่งให้ CloudFormation ผ่าน GitHub Actions เท่านั้นและไม่ถูกเขียนลงไฟล์ใน repository
 
+Google ใช้ Cognito Essentials + Managed Login v2 เพื่อส่ง `prompt=select_account` ไปยัง Google ทุกครั้ง (Classic/Lite ไม่รองรับพารามิเตอร์นี้) ทั้งการสมัครและเข้าสู่ระบบจะแสดงหน้าเลือกบัญชี และใช้อีเมลที่เคยสมัครเป็นบัญชีเดิม ปุ่ม Logout ล้าง session ในเว็บ เพิกถอน refresh token และไปยัง Cognito `/logout` เพื่อล้าง cookie ของ Cognito โดยไม่ออกจากบัญชี Google ในเว็บไซต์อื่น
+
+Pre-sign-up trigger เชื่อม Google ที่ยืนยันอีเมลแล้วเข้ากับบัญชีอีเมลเดิม และปฏิเสธการสมัครด้วยอีเมลซ้ำ หน้า Admin แสดงบัญชีจริงจาก Cognito ส่วนสิทธิ์อ่านจากบัญชีที่ล็อกอินอยู่ทุกครั้ง หลังลบบัญชี token เดิมจะเข้า API ไม่ได้
+
+กรณีเคยมี Google ซ้ำอยู่แล้ว ให้ใช้ Actions → **Consolidate a duplicate Google account** ใส่อีเมลและรันตรวจโดยไม่เลือก `apply` ก่อน งานจะบันทึกสำเนาโปรไฟล์ไว้ใน artifact 7 วัน ตรวจว่าไม่มีข้อมูล Classflow อ้างถึงบัญชีซ้ำ แล้วจึงรัน `apply=true` เพื่อลบเฉพาะ Google profile ที่ซ้ำและเชื่อม Google เข้าบัญชีเดิม ถ้าพบข้อมูลระบบจะหยุดก่อนลบ
+
+Free Tier ของ Cognito Lite และ Essentials ครอบคลุมบัญชีอีเมลและ Social Login รวม 10,000 MAU ต่อเดือนต่อ AWS account/organization; ตรวจเงื่อนไขปัจจุบันที่ https://aws.amazon.com/cognito/pricing/
+
 บัญชี AWS แบบ Free ที่ใช้กับโปรเจกต์นี้ยังไม่เปิด advanced features จึงใช้ GitHub OIDC ไม่ได้โดยไม่ต้อง upgrade บัญชี การ deploy demo จึงใช้ IAM user `classflow-github-actions` แทน ควรปิดหรือลบ access key/user หลัง demo และไม่ใส่ค่า key ลงใน repository
 
 IAM user นี้ใช้สิทธิ์กว้างเพื่อให้ CloudFormation deploy stack demo ได้ครบทุก resource ควรปิดหรือลบ user/access key หลังนำเสนอเสร็จ
