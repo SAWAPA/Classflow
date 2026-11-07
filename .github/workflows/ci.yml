@@ -1,4 +1,4 @@
-name: Classroom checks
+name: Classflow checks
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
