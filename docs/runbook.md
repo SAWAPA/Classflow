@@ -24,7 +24,7 @@ Playwright integration: ติดตั้ง playwright ตาม environment �
 ## CloudFormation ผ่าน Console
 
 1. ใช้บัญชี 778655339518, ap-southeast-2 ตรวจเครดิตและ plan ปัจจุบัน
-2. Build frontend ก่อนรัน package.py แล้วสร้างสแตกใหม่ชื่อ classflow-classroom จาก build/classroom-stack.json หรือวาง JSON เดียวกันใน Template Studio (แทนเอกสารตัวอย่างทั้งหมด) เทมเพลตที่รวมเว็บอาจใหญ่เกินขนาดที่ editor Validate รองรับ แต่ตรวจด้วย cfn-lint และ CloudFormation ตอน deploy ได้
+2. Build frontend ก่อนรัน package.py แล้วสร้างสแตกใหม่ชื่อ `classflow` จาก build/classroom-stack.json หรือวาง JSON เดียวกันใน Template Studio (แทนเอกสารตัวอย่างทั้งหมด) เทมเพลตที่รวมเว็บอาจใหญ่เกินขนาดที่ editor Validate รองรับ แต่ตรวจด้วย cfn-lint และ CloudFormation ตอน deploy ได้
 3. ยอมรับ IAM capability ตาม template, เปิด rollback และ validations ไม่เลือก Express mode
 4. รอ CREATE_COMPLETE ถ้า failed ให้ดู Events ห้ามแก้โดยเปิด public S3 หรือยกระดับสิทธิ์ทั้งบัญชี
 5. Custom resource SiteAssets ส่งหน้าเว็บขึ้น S3 และเติม config จากทรัพยากรจริงอัตโนมัติ จึงไม่ต้องอัปโหลด dist ด้วยมือ
@@ -45,7 +45,7 @@ python scripts/deploy.py --allow-account 778655339518
 deploy.py สร้างหรืออัปเดตสแตกและหน้าเว็บด้วย template ชุดเดียว หากต้องการเผยแพร่เฉพาะเว็บแยกเป็นทางเลือกสำรอง ใช้:
 
 ```powershell
-python scripts/publish.py --allow-account 778655339518 --stack classflow-classroom
+python scripts/publish.py --allow-account 778655339518 --stack classflow
 ```
 
 หากเพิ่งสมัครและยืนยันบัญชีครูใน pool ใหม่ ใช้ deploy.py --teacher-email ตาม email ที่ยืนยันแล้ว หรือเพิ่มกลุ่ม teachers ผ่าน Console ผู้ใช้ไม่สามารถเลื่อนตัวเองเป็นครูจากเว็บได้
@@ -54,7 +54,7 @@ python scripts/publish.py --allow-account 778655339518 --stack classflow-classro
 
 เมื่อ commit และ push การเปลี่ยนใต้ `frontend/` เข้า branch `main`, workflow `frontend-deploy.yml` จะ `npm ci`, build, อ่าน bucket/distribution จาก CloudFormation Outputs, ส่ง hashed assets และ invalidate entry point อัตโนมัติ การแก้ backend หรือ infrastructure ไม่ถูก deploy ด้วย workflow นี้
 
-ตั้ง Repository variables `AWS_DEPLOY_ROLE` และ `AWS_ACCOUNT_ID` ก่อนใช้งาน โดย role ใช้ GitHub OIDC และต้องผูก subject กับ `repo:SAWAPA/classflow-classroom:ref:refs/heads/main` พร้อมสิทธิ์ขั้นต่ำตาม README ไม่เก็บ AWS access key หรือ password ใน repository
+ตั้ง Repository variables `AWS_DEPLOY_ROLE` และ `AWS_ACCOUNT_ID` ก่อนใช้งาน โดย role ใช้ GitHub OIDC และต้องผูก subject กับ `repo:SAWAPA/Classflow:ref:refs/heads/main` พร้อมสิทธิ์ขั้นต่ำตาม README ไม่เก็บ AWS access key หรือ password ใน repository
 
 ## ไฟล์ Excel
 

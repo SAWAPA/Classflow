@@ -1,4 +1,4 @@
-name: Deploy Classroom (configured AWS OIDC required)
+name: Deploy Classflow (configured AWS OIDC required)
 on: workflow_dispatch
 permissions:
   contents: read

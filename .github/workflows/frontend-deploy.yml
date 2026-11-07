@@ -54,7 +54,7 @@ jobs:
       - name: Read CloudFormation outputs
         id: outputs
         env:
-          STACK_NAME: classflow-classroom
+          STACK_NAME: classflow
         run: |
           aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
             --query 'Stacks[0].Outputs' --output json > /tmp/classflow-outputs.json

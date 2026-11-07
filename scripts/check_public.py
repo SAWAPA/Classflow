@@ -1,5 +1,6 @@
 """Read-only deployment smoke checks. Never sends credentials or student data."""
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -8,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SITE = 'https://d1zs85ifsfqc1o.cloudfront.net'
 API = 'https://yjursns496.execute-api.ap-southeast-2.amazonaws.com'
-BUCKET = 'classflow-classroom-webbucket-tsytcadluhqg'
+BUCKET = os.environ.get('CLASSFLOW_FRONTEND_BUCKET')
 
 
 def request(url, data=None, method='GET', headers=None):
@@ -22,6 +23,7 @@ def request(url, data=None, method='GET', headers=None):
 
 
 def main():
+    assert BUCKET, 'Set CLASSFLOW_FRONTEND_BUCKET to the deployed frontend bucket before running this check'
     results = []
     status, headers, body = request(SITE + '/')
     assert status == 200 and b'Classflow' in body, 'Website unavailable'
