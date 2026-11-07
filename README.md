@@ -95,12 +95,15 @@ scripts/publish.py เป็นทางเลือกสำรองสำห�
 
 ไฟล์ `.github/workflows/deploy.yml` ทำงานเมื่อ push เข้า `main` ทุกไฟล์ โดยจะรัน test, build, package และ deploy ทั้ง Frontend, Backend และ Infrastructure ไปยัง CloudFormation stack `classflow-classroom` อัตโนมัติ การ deploy จะทำตามลำดับและไม่ยกเลิกงานที่กำลัง deploy อยู่ เพื่อป้องกัน AWS ค้างกลางทาง
 
-หลังสร้าง repository ให้ตั้ง Repository variables สองตัว:
+หลังสร้าง repository ให้ตั้งค่า Repository secrets และ variable ดังนี้:
 
-- `AWS_DEPLOY_ROLE` เป็น ARN ของ IAM role ที่ trust GitHub Actions OIDC ของ repository นี้ และให้สิทธิ์ที่จำเป็นสำหรับ CloudFormation, S3, Lambda, IAM, Cognito, DynamoDB, API Gateway, CloudFront และ CloudWatch Logs ในการ update stack นี้
-- `AWS_ACCOUNT_ID` เป็น `778655339518`
+- `AWS_ACCESS_KEY_ID` เป็น Repository secret ของ IAM user สำหรับ GitHub Actions
+- `AWS_SECRET_ACCESS_KEY` เป็น Repository secret ของ IAM user สำหรับ GitHub Actions
+- `AWS_ACCOUNT_ID` เป็น Repository variable ค่า `778655339518`
 
-AWS role ต้องจำกัด trust policy ให้ repository `SAWAPA/Classflow` และ branch `main` เท่านั้น (`repo:SAWAPA/Classflow:ref:refs/heads/main`) ไม่ใช้ access key ถาวรใน GitHub
+บัญชี AWS แบบ Free ที่ใช้กับโปรเจกต์นี้ยังไม่เปิด advanced features จึงใช้ GitHub OIDC ไม่ได้โดยไม่ต้อง upgrade บัญชี การ deploy demo จึงใช้ IAM user `classflow-github-actions` แทน ควรปิดหรือลบ access key/user หลัง demo และไม่ใส่ค่า key ลงใน repository
+
+IAM user นี้ใช้สิทธิ์กว้างเพื่อให้ CloudFormation deploy stack demo ได้ครบทุก resource ควรปิดหรือลบ user/access key หลังนำเสนอเสร็จ
 
 ## Admin
 

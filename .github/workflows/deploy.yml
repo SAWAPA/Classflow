@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: classflow-production
@@ -26,9 +25,11 @@ jobs:
 
       - name: Check deployment settings
         env:
-          DEPLOY_ROLE: ${{ vars.AWS_DEPLOY_ROLE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
-          test -n "$DEPLOY_ROLE" || { echo "Missing repository variable AWS_DEPLOY_ROLE"; exit 1; }
+          test -n "$AWS_ACCESS_KEY_ID" || { echo "Missing repository secret AWS_ACCESS_KEY_ID"; exit 1; }
+          test -n "$AWS_SECRET_ACCESS_KEY" || { echo "Missing repository secret AWS_SECRET_ACCESS_KEY"; exit 1; }
           test -n "$EXPECTED_ACCOUNT" || { echo "Missing repository variable AWS_ACCOUNT_ID"; exit 1; }
 
       - uses: actions/setup-python@v5
@@ -58,9 +59,9 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: classflow-deploy-${{ github.run_id }}
 
       - name: Verify the expected AWS account
         run: |

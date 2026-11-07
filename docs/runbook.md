@@ -54,7 +54,7 @@ python scripts/publish.py --allow-account 778655339518 --stack classflow-classro
 
 เมื่อ commit และ push การเปลี่ยนใด ๆ เข้า branch `main`, workflow `deploy.yml` จะรัน test, build, package และ deploy ทั้ง Frontend, Backend และ Infrastructure ของ stack `classflow-classroom` อัตโนมัติ
 
-ตั้ง Repository variables `AWS_DEPLOY_ROLE` และ `AWS_ACCOUNT_ID` ก่อนใช้งาน โดย role ใช้ GitHub OIDC และต้องผูก subject กับ `repo:SAWAPA/Classflow:ref:refs/heads/main` พร้อมสิทธิ์ขั้นต่ำตาม README ไม่เก็บ AWS access key หรือ password ใน repository
+ตั้ง Repository secrets `AWS_ACCESS_KEY_ID` และ `AWS_SECRET_ACCESS_KEY` ของ IAM user สำหรับ GitHub Actions และตั้ง Repository variable `AWS_ACCOUNT_ID=778655339518` ก่อนใช้งาน ไม่เก็บ AWS access key หรือ password ใน repository (GitHub จะเก็บ secret แบบเข้ารหัส) บัญชี AWS Free นี้ยังไม่เปิด advanced features จึงยังใช้ OIDC ไม่ได้โดยไม่ upgrade บัญชี ควรปิดหรือลบ access key/user หลัง demo
 
 ## ไฟล์ Excel
 
