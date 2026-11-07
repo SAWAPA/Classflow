@@ -20,6 +20,18 @@ export default function App() {
   useEffect(() => {if (!cid) return; let stale = false; setLoading(true); setState(null); rpc('getClass', {classId: cid}).then(r => {if (!stale) setState(r);}).catch(e => notify(e.message)).finally(() => {if (!stale) setLoading(false);}); return () => {stale = true;};}, [cid]);
   useEffect(() => {window.addEventListener('classflow-signed-out', logout); return () => window.removeEventListener('classflow-signed-out', logout);}, []);
   useEffect(() => {if (!toast) return; const timer = setTimeout(() => setToast(''), 8000); return () => clearTimeout(timer);}, [toast]);
+  useEffect(() => {
+  const hash = window.location.hash;
+  if (hash && hash.includes('id_token=')) {
+    const params = new URLSearchParams(hash.replace(/^#/, ''));
+    const idToken = params.get('id_token');
+    const expiresIn = Number(params.get('expires_in') || 3600);
+    if (idToken) {
+      login({token: idToken, expiresAt: Date.now() + expiresIn * 1000});
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }
+}, []);
   const profile = boot?.profile, teacher = profile?.role === 'teacher';
   const current = detail && state?.posts.find(p => p.id === detail.id);
   return <>

@@ -12,3 +12,9 @@
 .admin-user-info small {color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .admin-user select {max-width:130px;}
 @media (max-width: 980px) {.admin-grid {grid-template-columns:1fr;}}
+.auth-divider {display:flex; align-items:center; text-align:center; margin:18px 0; color:var(--muted); font-size:11px;}
+.auth-divider::before, .auth-divider::after {content:''; flex:1; border-bottom:1px solid var(--line);}
+.auth-divider span {padding:0 10px;}
+.google-auth-btn {width:100%; border:1px solid #dae3e5; background:white; color:#324d52; border-radius:8px; padding:10px 16px; display:inline-flex; align-items:center; justify-content:center; gap:9px; font-weight:600; font-size:12px; transition:background .15s, border-color .15s; margin-bottom:6px;}
+.google-auth-btn:hover {background:#f4f8f7; border-color:#b4c8c4;}
+.google-auth-btn svg {flex-shrink:0;}

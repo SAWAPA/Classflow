@@ -42,3 +42,11 @@ export async function openFile(classId, fileId) {
   const {url} = await rpc('downloadFile', {classId, fileId});
   const link = document.createElement('a'); link.href = url; link.rel = 'noopener noreferrer'; link.target = '_blank'; link.click();
 }
+
+export function getGoogleAuthUrl() {
+  const domain = config.cognitoDomain || import.meta.env.VITE_COGNITO_DOMAIN;
+  if (!domain || !config.clientId)
+    return null;
+  const redirectUri = encodeURIComponent(window.location.origin + '/');
+  return `${domain.replace(/\/$/, '')}/oauth2/authorize?identity_provider=Google&client_id=${config.clientId}&response_type=token&scope=email+openid+profile&redirect_uri=${redirectUri}`;
+}
