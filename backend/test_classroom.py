@@ -71,6 +71,10 @@ class ClassroomTests(unittest.TestCase):
         self.assertEqual(self.app.run(admin, 'adminListUsers', {})[-1]['email'], 'new@example.test')
         changed = self.app.run(admin, 'adminSetUserRole', {'userId': 'new@example.test', 'role': 'student'})
         self.assertEqual(changed['role'], 'student')
+        promoted = self.app.run(admin, 'adminSetUserRole', {'userId': 'new@example.test', 'role': 'admin'})
+        self.assertEqual(promoted['role'], 'admin')
+        created_admin = self.app.run(admin, 'adminCreateUser', {'email': 'new-admin@example.test', 'name': 'New Admin', 'password': 'safePass1', 'role': 'admin'})
+        self.assertEqual(created_admin['role'], 'admin')
         with self.assertRaises(ValueError): self.app.run(admin, 'adminCreateUser', {'email': 'weak@example.test', 'name': 'Weak', 'password': 'admin', 'role': 'student'})
 
     def test_cross_class_access_denied(self):

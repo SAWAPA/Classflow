@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--stack', default='classflow')
+    parser.add_argument('--stack', default='classflow-classroom')
     parser.add_argument('--region', default='ap-southeast-2')
     parser.add_argument('--teacher-email', help='Existing confirmed user in the NEW pool to add to teachers')
     parser.add_argument('--allow-account', required=True, help='Exact AWS account ID to deploy into')

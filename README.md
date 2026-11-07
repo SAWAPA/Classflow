@@ -91,13 +91,13 @@ python scripts/deploy.py --allow-account 778655339518
 
 scripts/publish.py เป็นทางเลือกสำรองสำหรับเผยแพร่หน้าเว็บแยก โดยเติม config จาก Outputs และส่ง assets ก่อน index.html ไม่รวมบัญชีตัวอย่าง Local
 
-## GitHub Actions สำหรับหน้าเว็บ
+## GitHub Actions สำหรับ Deploy อัตโนมัติ
 
-ไฟล์ `.github/workflows/frontend-deploy.yml` ทำงานเมื่อ push เข้า `main` และมีการเปลี่ยนใน `frontend/**` โดย build แล้วอัปโหลดไฟล์ static ไปยัง S3 และ invalidate เฉพาะ `index.html` กับ `config.js` บน CloudFront จึงไม่ deploy Lambda หรือสร้างทรัพยากร AWS ใหม่ทุกครั้ง
+ไฟล์ `.github/workflows/deploy.yml` ทำงานเมื่อ push เข้า `main` ทุกไฟล์ โดยจะรัน test, build, package และ deploy ทั้ง Frontend, Backend และ Infrastructure ไปยัง CloudFormation stack `classflow-classroom` อัตโนมัติ การ deploy จะทำตามลำดับและไม่ยกเลิกงานที่กำลัง deploy อยู่ เพื่อป้องกัน AWS ค้างกลางทาง
 
 หลังสร้าง repository ให้ตั้ง Repository variables สองตัว:
 
-- `AWS_DEPLOY_ROLE` เป็น ARN ของ IAM role ที่ trust GitHub Actions OIDC ของ repository นี้ และให้สิทธิ์เฉพาะ CloudFormation `DescribeStacks`, S3 `ListBucket/PutObject/DeleteObject` ของ frontend bucket และ CloudFront `CreateInvalidation` ของ distribution นี้
+- `AWS_DEPLOY_ROLE` เป็น ARN ของ IAM role ที่ trust GitHub Actions OIDC ของ repository นี้ และให้สิทธิ์ที่จำเป็นสำหรับ CloudFormation, S3, Lambda, IAM, Cognito, DynamoDB, API Gateway, CloudFront และ CloudWatch Logs ในการ update stack นี้
 - `AWS_ACCOUNT_ID` เป็น `778655339518`
 
 AWS role ต้องจำกัด trust policy ให้ repository `SAWAPA/Classflow` และ branch `main` เท่านั้น (`repo:SAWAPA/Classflow:ref:refs/heads/main`) ไม่ใช้ access key ถาวรใน GitHub

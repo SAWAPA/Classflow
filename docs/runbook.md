@@ -45,14 +45,14 @@ python scripts/deploy.py --allow-account 778655339518
 deploy.py สร้างหรืออัปเดตสแตกและหน้าเว็บด้วย template ชุดเดียว หากต้องการเผยแพร่เฉพาะเว็บแยกเป็นทางเลือกสำรอง ใช้:
 
 ```powershell
-python scripts/publish.py --allow-account 778655339518 --stack classflow
+python scripts/publish.py --allow-account 778655339518 --stack classflow-classroom
 ```
 
 หากใช้บัญชีสมัครเอง ผู้ใช้ต้องยืนยันอีเมลตามปกติ ส่วนบัญชีที่ Admin สร้างใช้รหัสผ่านที่ Admin ตั้งให้และเข้าใช้งานได้ทันที ผู้ใช้ทั่วไปไม่สามารถเลื่อนตัวเองเป็นครูหรือ Admin จากเว็บได้
 
-## GitHub Actions เฉพาะหน้าเว็บ
+## GitHub Actions สำหรับ Deploy อัตโนมัติ
 
-เมื่อ commit และ push การเปลี่ยนใต้ `frontend/` เข้า branch `main`, workflow `frontend-deploy.yml` จะ `npm ci`, build, อ่าน bucket/distribution จาก CloudFormation Outputs, ส่ง hashed assets และ invalidate entry point อัตโนมัติ การแก้ backend หรือ infrastructure ไม่ถูก deploy ด้วย workflow นี้
+เมื่อ commit และ push การเปลี่ยนใด ๆ เข้า branch `main`, workflow `deploy.yml` จะรัน test, build, package และ deploy ทั้ง Frontend, Backend และ Infrastructure ของ stack `classflow-classroom` อัตโนมัติ
 
 ตั้ง Repository variables `AWS_DEPLOY_ROLE` และ `AWS_ACCOUNT_ID` ก่อนใช้งาน โดย role ใช้ GitHub OIDC และต้องผูก subject กับ `repo:SAWAPA/Classflow:ref:refs/heads/main` พร้อมสิทธิ์ขั้นต่ำตาม README ไม่เก็บ AWS access key หรือ password ใน repository
 

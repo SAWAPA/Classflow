@@ -28,7 +28,7 @@ def publish(session, outputs):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--stack', default='classflow')
+    parser.add_argument('--stack', default='classflow-classroom')
     parser.add_argument('--region', default='ap-southeast-2')
     parser.add_argument('--allow-account', required=True)
     args = parser.parse_args()

@@ -10,11 +10,11 @@ const labels = {stream: 'หน้าชั้นเรียน', work: 'งา
 const navigation = [[BookOpen, 'stream'], [ClipboardList, 'work'], [LayoutDashboard, 'dashboard'], [Users, 'people'], [MessageCircle, 'messages'], [CalendarDays, 'timeline']];
 
 export default function App() {
-  const [session, setSession] = useState(getSession), [boot, setBoot] = useState(null), [cid, setCid] = useState(''), [state, setState] = useState(null), [tab, setTab] = useState('stream'), [modal, setModal] = useState(null), [detail, setDetail] = useState(null), [grading, setGrading] = useState(null), [toast, setToast] = useState(''), [loading, setLoading] = useState(false);
+  const [session, setSession] = useState(getSession), [boot, setBoot] = useState(null), [bootError, setBootError] = useState(''), [cid, setCid] = useState(''), [state, setState] = useState(null), [tab, setTab] = useState('stream'), [modal, setModal] = useState(null), [detail, setDetail] = useState(null), [grading, setGrading] = useState(null), [toast, setToast] = useState(''), [loading, setLoading] = useState(false);
   function notify(message) {setToast(message);}
-  function login(value) {saveSession(value); setSession(value);}
-  function logout() {saveSession(null); setSession(null); setState(null); setBoot(null); setCid('');}
-  async function bootstrap(nextId) {const r = await rpc('bootstrap'); setBoot(r); setCid(prior => nextId || prior || r.courses[0]?.id || '');}
+  function login(value) {saveSession(value); setSession(value); setBoot(null); setBootError(''); setState(null); setCid('');}
+  function logout() {saveSession(null); setSession(null); setState(null); setBoot(null); setBootError(''); setCid('');}
+  async function bootstrap(nextId) {setBootError(''); try {const r = await rpc('bootstrap'); setBoot(r); setCid(prior => nextId || prior || r.courses[0]?.id || ''); return r;} catch (error) {setBootError(error.message); throw error;}}
   async function refresh() {if (cid) setState(await rpc('getClass', {classId: cid}));}
   useEffect(() => {if (session) bootstrap().catch(e => notify(e.message));}, [session]);
   useEffect(() => {if (!cid) return; let stale = false; setLoading(true); setState(null); rpc('getClass', {classId: cid}).then(r => {if (!stale) setState(r);}).catch(e => notify(e.message)).finally(() => {if (!stale) setLoading(false);}); return () => {stale = true;};}, [cid]);
@@ -24,7 +24,7 @@ export default function App() {
   const current = detail && state?.posts.find(p => p.id === detail.id);
   return <>
     {toast && <div className="toast" role="status"><AlertCircle size={18}/><span>{toast}</span><button className="icon-btn" aria-label="ปิดแจ้งเตือน" onClick={() => setToast('')}><X size={16}/></button></div>}
-    {!session ? <Auth onLogin={login} notify={notify}/> : profile?.role === 'admin' ? <AdminPanel profile={profile} logout={logout} notify={notify}/> : <div className="app-shell">
+    {!session ? <Auth onLogin={login} notify={notify}/> : !boot ? <div className="welcome-empty"><RefreshCw size={45}/><h1>{bootError ? 'เข้าสู่ระบบไม่สำเร็จ' : 'กำลังตรวจสอบสิทธิ์…'}</h1><p className="muted">{bootError || 'ระบบกำลังเลือกหน้าให้ตรงกับยศของคุณ'}</p>{bootError && <Btn onClick={() => bootstrap().catch(() => {})}>ลองใหม่</Btn>}</div> : profile?.role === 'admin' ? <AdminPanel profile={profile} logout={logout} notify={notify}/> : <div className="app-shell">
       <aside className="sidebar"><div className="brand"><span><Layers/></span>classflow<span className="brand-dot">.</span></div><div className="workspace-label">YOUR WORKSPACE</div>
         <div className="class-select"><div className="class-icon"><BookOpen size={19}/></div><select aria-label="เลือกห้องเรียน" value={cid} onChange={e => {setCid(e.target.value); setTab('stream');}}>{!boot?.courses.length && <option value="">ห้องเรียนของฉัน</option>}{boot?.courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
         <nav>{navigation.map(([Icon, id]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={19}/>{labels[id]}{id === 'work' && state && <small>{state.posts.filter(p => p.kind === 'assignment').length}</small>}</button>)}</nav>

@@ -54,8 +54,8 @@ class Classroom:
         if len(password) < 8 or len(password) > 128 or not any(c.islower() for c in password) or not any(c.isdigit() for c in password):
             raise ValueError('รหัสผ่านต้องยาวอย่างน้อย 8 ตัว มีตัวพิมพ์เล็กและตัวเลข ตามกติกา Cognito')
         role = data.get('role', 'student')
-        if role not in ('teacher', 'student'):
-            raise ValueError('กำหนดยศได้เฉพาะครูหรือนักเรียน')
+        if role not in ('admin', 'teacher', 'student'):
+            raise ValueError('กำหนดยศได้เฉพาะผู้ดูแลระบบ ครู หรือนักเรียน')
         return self.directory.create_user(email, name, password, role)
 
     def profile(self, user):
@@ -122,8 +122,8 @@ class Classroom:
             self.admin_only(user)
             target = text(data.get('userId'), 254)
             role = data.get('role')
-            if role not in ('teacher', 'student'):
-                raise ValueError('กำหนดยศได้เฉพาะครูหรือนักเรียน')
+            if role not in ('admin', 'teacher', 'student'):
+                raise ValueError('กำหนดยศได้เฉพาะผู้ดูแลระบบ ครู หรือนักเรียน')
             return self.directory.set_role(target, role)
         if action == 'createClass':
             if user['role'] != 'teacher':
