@@ -1,0 +1,20 @@
+/* Keep Thai text readable on classroom projectors and smaller laptop displays. */
+.sidebar nav>button{font-size:13px}
+.workspace-label{font-size:9px}.breadcrumb,.topbar-right{font-size:11px}
+.hero-meta>span:first-child{font-size:9px}.course-hero p{font-size:13px}
+.overview-row small{font-size:11px}.content-tabs button{font-size:12px}
+.post-author strong{font-size:13px}.post-author small{font-size:10px}
+.post-open>p{font-size:13px}.post-open h3{font-size:18px}.post-link{font-size:12px}
+.post-bottom,.post-due{font-size:11px}.post-due strong{font-size:11px}
+.post-author>.badge{font-size:10px}.composer{font-size:13px}
+.side-card h3{font-size:15px}.upcoming>div:nth-child(2)>strong{font-size:12px}
+.upcoming>div:nth-child(2)>small{font-size:10px}.tip-card p,.side-card>p{font-size:12px}
+.stat-card small{font-size:12px}.status-strip{font-size:12px}
+.stat-card>span{top:12px;right:12px}.stat-card small{max-width:85%}
+table{font-size:12px}thead{font-size:11px}td small,th small{font-size:10px}
+.watch-list strong{font-size:13px}.watch-list small{font-size:11px}
+.body-text,.field{font-size:13px}.badge{font-size:11px}
+.work-card>p{font-size:13px}.work-card .icon-label{font-size:12px}
+.chat-list>button{font-size:12px}.chat-head strong{font-size:13px}
+.bar-track{flex:0 0 120px}.bar-chart{height:190px}
+@media(max-width:700px){.sidebar nav>button{font-size:11px}.hero-meta>span:first-child{font-size:8px}.course-hero p{font-size:12px}.overview-row small{font-size:9px}.content-tabs button{font-size:11px}.post-open h3{font-size:17px}.post-open>p{font-size:13px}.post-due,.post-due strong{font-size:9px}.stat-card small{font-size:10px}.stat-card>span{display:none}.local-banner{font-size:9px}.composer{font-size:12px}.person-row strong{font-size:12px}}

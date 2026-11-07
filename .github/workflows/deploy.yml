@@ -1,0 +1,34 @@
+name: Deploy Classflow (configured AWS OIDC required)
+on: workflow_dispatch
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    if: vars.AWS_DEPLOY_ROLE != '' && vars.AWS_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    environment: classroom
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: python -m unittest discover -s backend -v
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - run: pip install boto3 cfn-lint
+      - run: python scripts/package.py && cfn-lint -t build/classroom-stack.json
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          aws-region: ap-southeast-2
+      - run: python scripts/deploy.py --allow-account "$CLASSROOM_ACCOUNT"
+        env:
+          CLASSROOM_ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
