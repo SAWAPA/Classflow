@@ -50,7 +50,9 @@ export function getGoogleAuthUrl() {
   const state = crypto.randomUUID ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
   sessionStorage.setItem('classflow-google-state', state);
   const redirectUri = window.location.origin + '/';
-  const query = new URLSearchParams({identity_provider: 'Google', client_id: config.clientId, response_type: 'code', scope: 'email openid profile', redirect_uri: redirectUri, state});
+  // Always ask Google to show the account chooser. This prevents a previous
+  // Google session in the browser from silently selecting the wrong account.
+  const query = new URLSearchParams({identity_provider: 'Google', client_id: config.clientId, response_type: 'code', scope: 'email openid profile', redirect_uri: redirectUri, state, prompt: 'select_account'});
   return `${domain.replace(/\/$/, '')}/oauth2/authorize?${query.toString()}`;
 }
 

@@ -21,6 +21,9 @@ def package():
     asset_source = (ROOT / 'backend/deploy_assets.py').read_text(encoding='utf-8')
     compile(asset_source, 'index.py', 'exec')
     template['Resources']['AssetFunction']['Properties']['Code']['ZipFile'] = asset_source
+    trigger_source = (ROOT / 'backend/cognito_trigger.py').read_text(encoding='utf-8')
+    compile(trigger_source, 'index.py', 'exec')
+    template['Resources']['CognitoTriggerFunction']['Properties']['Code']['ZipFile'] = trigger_source
     frontend = ROOT / 'frontend/dist'
     if not (frontend / 'index.html').exists():
         raise SystemExit('Run npm run build in frontend before packaging the CloudFormation template.')
@@ -38,7 +41,7 @@ def package():
         raise SystemExit('Combined template exceeds 1 MB. Use S3 template/asset packaging before deploying.')
     path.write_text(text, encoding='utf-8')
     with zipfile.ZipFile(output / 'classroom-backend.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
-        for name in ('domain', 'store', 'service', 'files', 'handler'):
+        for name in ('domain', 'store', 'service', 'files', 'handler', 'cognito_trigger'):
             archive.write(ROOT / 'backend' / (name + '.py'), name + '.py')
     print(f'CloudFormation template: {path} ({len(text.encode()):,} bytes)')
     return path

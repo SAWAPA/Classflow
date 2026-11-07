@@ -24,6 +24,10 @@ def _role_from_groups(groups):
     return 'admin' if 'admins' in groups else 'teacher' if 'teachers' in groups else 'student'
 
 
+def _normal_email(value):
+    return str(value or '').strip().casefold()
+
+
 def claims_user(claims, directory=None):
     if not claims.get('sub') or claims.get('token_use') != 'id':
         raise PermissionError('กรุณาเข้าสู่ระบบใหม่')
@@ -33,6 +37,16 @@ def claims_user(claims, directory=None):
         try:
             # Cognito group membership is the source of truth. This also fixes
             # sessions whose token was issued before a role was changed.
+            canonical = directory.resolve_user(claims.get('email', ''), username)
+            if canonical:
+                # A Google profile can have the same email as an older local
+                # profile. Use the canonical profile's sub so both login
+                # methods open the same Classflow account and data.
+                groups.update(canonical.get('groups', set()))
+                return {'id': canonical.get('sub') or claims['sub'],
+                        'name': canonical.get('name') or claims.get('name') or claims.get('email', 'สมาชิก'),
+                        'email': canonical.get('email') or claims.get('email', ''),
+                        'role': canonical.get('role', _role_from_groups(groups))}
             groups.update(directory.groups_for_user(username))
         except Exception:
             logging.exception('cognito_group_lookup_failed')
@@ -57,22 +71,64 @@ class CognitoDirectory:
         username = item['Username']
         groups = self.groups_for_user(username)
         role = _role_from_groups(groups)
-        return {'id': username, 'email': attributes.get('email', username), 'name': attributes.get('name', attributes.get('email', username)),
-                'role': role, 'status': item.get('UserStatus', 'UNKNOWN'), 'enabled': item.get('Enabled', True), 'createdAt': item.get('UserCreateDate').isoformat() if item.get('UserCreateDate') else None}
+        return {'id': username, 'username': username, 'sub': attributes.get('sub'),
+                'email': attributes.get('email', username), 'name': attributes.get('name', attributes.get('email', username)),
+                'role': role, 'groups': groups, 'status': item.get('UserStatus', 'UNKNOWN'),
+                'enabled': item.get('Enabled', True), 'createdAt': item.get('UserCreateDate').isoformat() if item.get('UserCreateDate') else None}
 
-    def list_users(self):
+    def _all_users(self, email=None):
         users, token = [], None
+        request = {'UserPoolId': self.pool_id, 'Limit': 60}
+        if email:
+            escaped = email.replace('\\', '\\\\').replace('"', '\\"')
+            request['Filter'] = f'email = "{escaped}"'
         while True:
-            request = {'UserPoolId': self.pool_id, 'Limit': 60}
             if token:
                 request['PaginationToken'] = token
             response = self.client.list_users(**request)
             users.extend(self._user(item) for item in response.get('Users', []))
             token = response.get('PaginationToken')
             if not token:
-                return sorted(users, key=lambda user: (user['role'] != 'admin', user['name'].lower()))
+                return users
+
+    @staticmethod
+    def _canonical(users):
+        if not users:
+            return None
+        rank = {'admin': 3, 'teacher': 2, 'student': 1}
+        # Keep the existing local account when a federated Google profile was
+        # created later. A higher Classflow role wins so an admin/teacher is
+        # never silently downgraded by a duplicate social profile.
+        return sorted(users, key=lambda user: (
+            -rank.get(user.get('role'), 0),
+            user.get('username', '').startswith(('Google_', 'Facebook_', 'LoginWithAmazon_', 'SignInWithApple_')),
+            user.get('createdAt') or '',
+        ))[0]
+
+    def resolve_user(self, email, username=None):
+        normalized = _normal_email(email)
+        users = self._all_users(normalized) if normalized else []
+        if users:
+            return self._canonical(users)
+        if username:
+            try:
+                return self._user(self.client.admin_get_user(UserPoolId=self.pool_id, Username=username))
+            except self.client.exceptions.UserNotFoundException:
+                pass
+        return None
+
+    def list_users(self):
+        users = self._all_users()
+        unique = {}
+        for user in users:
+            key = _normal_email(user.get('email')) or user.get('username')
+            unique[key] = self._canonical([unique[key], user]) if key in unique else user
+        return sorted(unique.values(), key=lambda user: (user['role'] != 'admin', user['name'].lower()))
 
     def create_user(self, email, name, password, role):
+        email = _normal_email(email)
+        if self._all_users(email):
+            raise ValueError('อีเมลนี้มีบัญชีอยู่แล้ว ระบบอนุญาตหนึ่งอีเมลต่อหนึ่งบัญชี')
         self.client.admin_create_user(UserPoolId=self.pool_id, Username=email,
             UserAttributes=[{'Name': 'email', 'Value': email}, {'Name': 'email_verified', 'Value': 'true'}, {'Name': 'name', 'Value': name}],
             MessageAction='SUPPRESS')
