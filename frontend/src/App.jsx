@@ -3,6 +3,7 @@ import {BookOpen, LayoutDashboard, ClipboardList, MessageCircle, Users, Calendar
 import {rpc, isLocal, getSession, saveSession} from './api';
 import {Avatar, Badge, Btn, Empty} from './ui';
 import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading} from './forms';
+import AdminPanel from './Admin';
 import {Stream, Work, Timeline, Messages} from './views';
 import Dashboard from './Dashboard';
 const labels = {stream: 'หน้าชั้นเรียน', work: 'งานในชั้นเรียน', dashboard: 'คะแนนและเกรด', people: 'สมาชิก', messages: 'ข้อความ', timeline: 'กำหนดส่งงาน'};
@@ -23,7 +24,7 @@ export default function App() {
   const current = detail && state?.posts.find(p => p.id === detail.id);
   return <>
     {toast && <div className="toast" role="status"><AlertCircle size={18}/><span>{toast}</span><button className="icon-btn" aria-label="ปิดแจ้งเตือน" onClick={() => setToast('')}><X size={16}/></button></div>}
-    {!session ? <Auth onLogin={login} notify={notify}/> : <div className="app-shell">
+    {!session ? <Auth onLogin={login} notify={notify}/> : profile?.role === 'admin' ? <AdminPanel profile={profile} logout={logout} notify={notify}/> : <div className="app-shell">
       <aside className="sidebar"><div className="brand"><span><Layers/></span>classflow<span className="brand-dot">.</span></div><div className="workspace-label">YOUR WORKSPACE</div>
         <div className="class-select"><div className="class-icon"><BookOpen size={19}/></div><select aria-label="เลือกห้องเรียน" value={cid} onChange={e => {setCid(e.target.value); setTab('stream');}}>{!boot?.courses.length && <option value="">ห้องเรียนของฉัน</option>}{boot?.courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
         <nav>{navigation.map(([Icon, id]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={19}/>{labels[id]}{id === 'work' && state && <small>{state.posts.filter(p => p.kind === 'assignment').length}</small>}</button>)}</nav>

@@ -29,7 +29,7 @@ Browser ไม่ได้รับ AWS access key ฐานข้อมูล�
 | S3 | Object Storage | bucket หน้าเว็บ และ bucket ไฟล์ส่วนตัวแยกกัน | เหมาะกับ binary files; ไม่ใช้ filesystem ร่วมกัน |
 | DynamoDB | Managed NoSQL | สมาชิก ห้องเรียน งาน คะแนน ข้อความ metadata | query ตาม partition และ conditional writes; ไม่สะดวก SQL joins |
 | HTTP API | Managed API endpoint | รับ RPC และตรวจ JWT กับ Cognito | ใช้กับฟีเจอร์ CRUD ได้ตรงไปตรงมา; จำกัด rate ต่อ stage ไม่ใช่ hard spending cap |
-| Cognito Lite | User directory / auth | Email confirmation, sign-in, teachers group | ไม่เก็บรหัสผ่านในโค้ด; ต้องตั้งครูผ่าน AWS admin |
+| Cognito Lite | User directory / auth | Email confirmation, sign-in, admins/teachers groups | ไม่เก็บรหัสผ่านในโค้ด; Admin จัดการผู้ใช้ผ่าน API ที่ตรวจ group |
 | CloudFront | CDN และ HTTPS | ส่งหน้าเว็บจาก S3 private ด้วย OAC | เพิ่มหนึ่งบริการเพื่อ TLS และ cache; deploy distribution ใช้เวลาและมี pricing ตามบัญชี |
 | CloudWatch | Logs/metrics | วิเคราะห์ error และสาธิต observability | เก็บ log 7 วันเพื่อลดการสะสม; ยังต้อง monitor จริง |
 
@@ -82,7 +82,7 @@ DynamoDB item จำกัดขนาด: จำกัดสมุดคะแ�
 | ดาวน์โหลดไฟล์งาน | ทุกคนในห้อง | ของตนเอง | ไม่ได้ |
 | ดาวน์โหลดไฟล์เนื้อหา | ได้ | ได้ | ไม่ได้ |
 
-บทบาทครูมาจาก Cognito teachers group และการเป็น owner ของห้อง ไม่เชื่อ role/userId จาก JSON ที่ browser ส่ง
+บทบาท Admin/ครูมาจาก Cognito groups และการเป็น owner ของห้อง ไม่เชื่อ role/userId จาก JSON ที่ browser ส่ง การจัดการผู้ใช้ทำได้เฉพาะ Admin ที่ผ่าน JWT authorizer และ Lambda มีสิทธิ์ Cognito เฉพาะ UserPool เดียว
 
 ไฟล์จำกัด extension และขนาด Presigned POST อายุ 5 นาที กำหนด content-length-range และ Content-Type หลัง upload ตรวจ HeadObject ก่อนยืนยันไฟล์ Download link หมดอายุใน 60 วินาที ไฟล์ดาวน์โหลดเป็น attachment ไม่มีการประมวลผล macro และไม่มี antivirus scanning ใน scope นี้ ผู้ดาวน์โหลดต้องใช้เครื่องมือรักษาความปลอดภัยของตนเอง
 

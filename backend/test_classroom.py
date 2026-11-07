@@ -14,13 +14,32 @@ class FakeFiles:
     def download(self, file): return 'https://test.invalid/private/' + file['id']
 
 
+class FakeDirectory:
+    def __init__(self):
+        self.users = [{'id': 't', 'name': 'Teacher', 'email': 't@example.test', 'role': 'teacher'}]
+
+    def list_users(self): return self.users
+
+    def create_user(self, email, name, password, role):
+        if any(user['email'] == email for user in self.users): raise ValueError('duplicate')
+        user = {'id': email, 'name': name, 'email': email, 'role': role}
+        self.users.append(user)
+        return user
+
+    def set_role(self, user_id, role):
+        user = next(user for user in self.users if user['id'] == user_id)
+        user['role'] = role
+        return user
+
+
 class ClassroomTests(unittest.TestCase):
     def setUp(self):
         test_root = Path(__file__).resolve().parent.parent / '.local' / 'tests'
         test_root.mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=test_root)
         self.db = LocalStore(Path(self.temp.name) / 'db.sqlite3')
-        self.app = Classroom(self.db, FakeFiles())
+        self.directory = FakeDirectory()
+        self.app = Classroom(self.db, FakeFiles(), self.directory)
         self.teacher = {'id': 't', 'name': 'Teacher', 'email': 't@example.test', 'role': 'teacher'}
         self.students = [{'id': 's1', 'name': 'Student One', 'email': 's1@example.test', 'role': 'student'}, {'id': 's2', 'name': 'Student Two', 'email': 's2@example.test', 'role': 'student'}]
         self.course = self.app.run(self.teacher, 'createClass', {'name': 'Cloud', 'subject': 'CLOUD101'})
@@ -43,6 +62,16 @@ class ClassroomTests(unittest.TestCase):
         for action, data in [('createExam', {'title': 'Fake', 'maxScore': 100}), ('grade', {}), ('previewGrades', {}), ('saveGrading', {}), ('publishGrades', {})]:
             with self.subTest(action=action), self.assertRaises(PermissionError): self.run_action(self.students[0], action, **data)
         with self.assertRaises(PermissionError): self.app.run(self.students[0], 'createClass', {'name': 'Fake', 'subject': 'F'})
+
+    def test_admin_directory_and_role_management(self):
+        admin = {'id': 'a', 'name': 'Admin', 'email': 'a@example.test', 'role': 'admin'}
+        with self.assertRaises(PermissionError): self.app.run(self.teacher, 'adminListUsers', {})
+        created = self.app.run(admin, 'adminCreateUser', {'email': 'new@example.test', 'name': 'New Teacher', 'password': 'safePass1', 'role': 'teacher'})
+        self.assertEqual(created['role'], 'teacher')
+        self.assertEqual(self.app.run(admin, 'adminListUsers', {})[-1]['email'], 'new@example.test')
+        changed = self.app.run(admin, 'adminSetUserRole', {'userId': 'new@example.test', 'role': 'student'})
+        self.assertEqual(changed['role'], 'student')
+        with self.assertRaises(ValueError): self.app.run(admin, 'adminCreateUser', {'email': 'weak@example.test', 'name': 'Weak', 'password': 'admin', 'role': 'student'})
 
     def test_cross_class_access_denied(self):
         outsider = {**self.teacher, 'id': 'outsider'}
