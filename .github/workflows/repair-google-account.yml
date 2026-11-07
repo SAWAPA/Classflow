@@ -39,9 +39,3 @@ jobs:
           ARGS=()
           if [ "$APPLY_REPAIR" = "true" ]; then ARGS+=(--apply); fi
           python scripts/repair_google_account.py --email "$REPAIR_EMAIL" --allow-account "$EXPECTED_ACCOUNT" "${ARGS[@]}"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: account-repair-backup
-          path: .local/account-repair-backup.json
-          retention-days: 7

@@ -114,7 +114,7 @@ Google ใช้ Cognito Essentials + Managed Login v2 เพื่อส่ง 
 
 Pre-sign-up trigger เชื่อม Google ที่ยืนยันอีเมลแล้วเข้ากับบัญชีอีเมลเดิม และปฏิเสธการสมัครด้วยอีเมลซ้ำ หน้า Admin แสดงบัญชีจริงจาก Cognito ส่วนสิทธิ์อ่านจากบัญชีที่ล็อกอินอยู่ทุกครั้ง หลังลบบัญชี token เดิมจะเข้า API ไม่ได้
 
-กรณีเคยมี Google ซ้ำอยู่แล้ว ให้ใช้ Actions → **Consolidate a duplicate Google account** ใส่อีเมลและรันตรวจโดยไม่เลือก `apply` ก่อน งานจะบันทึกสำเนาโปรไฟล์ไว้ใน artifact 7 วัน ตรวจว่าไม่มีข้อมูล Classflow อ้างถึงบัญชีซ้ำ แล้วจึงรัน `apply=true` เพื่อลบเฉพาะ Google profile ที่ซ้ำและเชื่อม Google เข้าบัญชีเดิม ถ้าพบข้อมูลระบบจะหยุดก่อนลบ
+กรณีเคยมี Google ซ้ำอยู่แล้ว ให้ใช้ Actions → **Consolidate a duplicate Google account** ใส่อีเมลและรันตรวจโดยไม่เลือก `apply` ก่อน ตรวจว่าไม่มีข้อมูล Classflow อ้างถึงบัญชีซ้ำ แล้วจึงรัน `apply=true` งานจะบันทึกสำเนาโปรไฟล์ใน S3 ส่วนตัวของ AWS บัญชีเดิมที่ `maintenance/account-repair/` ก่อนลบเฉพาะ Google profile ที่ซ้ำและเชื่อม Google เข้าบัญชีเดิม ถ้าพบข้อมูลระบบจะหยุดก่อนลบ รายละเอียดโปรไฟล์ไม่ถูกส่งขึ้น GitHub artifact หรือ logs
 
 Free Tier ของ Cognito Lite และ Essentials ครอบคลุมบัญชีอีเมลและ Social Login รวม 10,000 MAU ต่อเดือนต่อ AWS account/organization; ตรวจเงื่อนไขปัจจุบันที่ https://aws.amazon.com/cognito/pricing/
 

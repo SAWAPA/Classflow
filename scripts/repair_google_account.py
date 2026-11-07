@@ -4,8 +4,8 @@ Defaults to read-only. An explicit email, AWS account and --apply are required
 for deletion. Any Classflow data referring to the duplicate blocks deletion.
 """
 import argparse
+import datetime as dt
 import json
-from pathlib import Path
 
 
 def attributes(user):
@@ -21,7 +21,7 @@ def inspect(session, stack, email):
         users.extend(u for u in page.get('Users', []) if attributes(u).get('email', '').strip().casefold() == email)
     native = [u for u in users if not u['Username'].lower().startswith('google_')]
     google = [u for u in users if u['Username'].lower().startswith('google_')]
-    report = {'pool': pool, 'email': email, 'users': users, 'duplicateCount': len(google), 'references': []}
+    report = {'pool': pool, 'email': email, 'users': users, 'duplicateCount': len(google), 'references': [], 'backupBucket': outputs['UploadsBucket']}
     if len(native) != 1 or len(google) > 1:
         raise ValueError('Expected exactly one native profile and at most one Google duplicate.')
     target = native[0]
@@ -60,12 +60,10 @@ def main():
         raise SystemExit('Wrong AWS account; no changes made.')
     email = args.email.strip().casefold()
     report, cognito, target, google = inspect(session, args.stack, email)
-    backup = Path('.local/account-repair-backup.json')
-    backup.parent.mkdir(parents=True, exist_ok=True)
-    backup.write_text(json.dumps(report, default=str, ensure_ascii=False, indent=2), encoding='utf-8')
     print('Profiles:', len(report['users']), '| Google duplicates:', len(google), '| data references:', len(report['references']))
     for user in report['users']:
-        print('Profile:', user['Username'], '| status:', user.get('UserStatus'), '| groups:', [g['GroupName'] for g in user['Groups']])
+        kind = 'Google duplicate' if user['Username'].lower().startswith('google_') else 'Original account'
+        print('Profile type:', kind, '| status:', user.get('UserStatus'), '| groups:', [g['GroupName'] for g in user['Groups']])
     if not google:
         print('Already consolidated; nothing to delete.')
         return
@@ -76,9 +74,16 @@ def main():
     identity = next((i for i in identities if i.get('providerName') == 'Google'), None)
     if not identity or not identity.get('userId'):
         raise SystemExit('No trusted Google identity to link. No deletion performed.')
-    print('Destination:', target['Username'], '| ready:', True, '| apply:', args.apply)
+    print('Destination: original verified account | ready:', True, '| apply:', args.apply)
     if not args.apply:
         return
+    backup_key = 'maintenance/account-repair/' + dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S') + '.json'
+    session.client('s3').put_object(
+        Bucket=report['backupBucket'], Key=backup_key,
+        Body=json.dumps(report, default=str, ensure_ascii=False).encode('utf-8'),
+        ContentType='application/json', ServerSideEncryption='AES256', ExpectedBucketOwner=args.allow_account,
+    )
+    print('Backup saved in the existing private AWS uploads bucket.')
     pool = report['pool']
     # Preserve both existing sets of groups; no password or application data changes.
     target_groups = {g['GroupName'] for g in target['Groups']}
