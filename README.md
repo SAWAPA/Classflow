@@ -100,6 +100,15 @@ scripts/publish.py เป็นทางเลือกสำรองสำห�
 - `AWS_ACCESS_KEY_ID` เป็น Repository secret ของ IAM user สำหรับ GitHub Actions
 - `AWS_SECRET_ACCESS_KEY` เป็น Repository secret ของ IAM user สำหรับ GitHub Actions
 - `AWS_ACCOUNT_ID` เป็น Repository variable ค่า `778655339518`
+- `GOOGLE_CLIENT_ID` และ `GOOGLE_CLIENT_SECRET` เป็น Repository secrets แบบใส่เป็นคู่; ถ้าไม่ใส่ทั้งคู่ Google Login จะยังปิดอยู่ แต่ workflow ยัง deploy ได้
+
+### เปิด Google Login
+
+สร้าง OAuth Client แบบ Web application ใน Google Cloud Console แล้วตั้ง Authorized redirect URI เป็น Cognito endpoint ของสแตกนี้:
+
+`https://classflow-778655339518.auth.ap-southeast-2.amazoncognito.com/oauth2/idpresponse`
+
+จากนั้นนำ Client ID และ Client Secret ไปใส่ใน GitHub repository secrets ชื่อ `GOOGLE_CLIENT_ID` และ `GOOGLE_CLIENT_SECRET` แล้ว push เข้า `main` อีกครั้ง ระบบจะสร้าง Cognito domain, Google identity provider และเปิดปุ่ม Google Login ให้อัตโนมัติ ค่าลับจะถูกส่งให้ CloudFormation ผ่าน GitHub Actions เท่านั้นและไม่ถูกเขียนลงไฟล์ใน repository
 
 บัญชี AWS แบบ Free ที่ใช้กับโปรเจกต์นี้ยังไม่เปิด advanced features จึงใช้ GitHub OIDC ไม่ได้โดยไม่ต้อง upgrade บัญชี การ deploy demo จึงใช้ IAM user `classflow-github-actions` แทน ควรปิดหรือลบ access key/user หลัง demo และไม่ใส่ค่า key ลงใน repository
 

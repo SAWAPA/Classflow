@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react';
 import {BookOpen, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X} from 'lucide-react';
-import {rpc, isLocal, getSession, saveSession} from './api';
+import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode} from './api';
 import {Avatar, Badge, Btn, Empty} from './ui';
 import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading} from './forms';
 import AdminPanel from './Admin';
@@ -21,17 +21,34 @@ export default function App() {
   useEffect(() => {window.addEventListener('classflow-signed-out', logout); return () => window.removeEventListener('classflow-signed-out', logout);}, []);
   useEffect(() => {if (!toast) return; const timer = setTimeout(() => setToast(''), 8000); return () => clearTimeout(timer);}, [toast]);
   useEffect(() => {
-  const hash = window.location.hash;
-  if (hash && hash.includes('id_token=')) {
-    const params = new URLSearchParams(hash.replace(/^#/, ''));
-    const idToken = params.get('id_token');
-    const expiresIn = Number(params.get('expires_in') || 3600);
-    if (idToken) {
-      login({token: idToken, expiresAt: Date.now() + expiresIn * 1000});
-      window.history.replaceState(null, '', window.location.pathname);
-    }
-  }
-}, []);
+    let active = true;
+    (async () => {
+      try {
+        const googleSession = await exchangeGoogleCode();
+        if (googleSession && active) {
+          login(googleSession);
+          window.history.replaceState(null, '', window.location.pathname);
+          return;
+        }
+        // Keep the previous implicit-flow callback working for any old links.
+        const hash = window.location.hash;
+        if (hash && hash.includes('id_token=')) {
+          const params = new URLSearchParams(hash.replace(/^#/, ''));
+          const idToken = params.get('id_token');
+          const refreshToken = params.get('refresh_token');
+          const expiresIn = Number(params.get('expires_in') || 3600);
+          if (idToken && active) {
+            login({token: idToken, refreshToken, expiresAt: Date.now() + expiresIn * 1000});
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        }
+      } catch (error) {
+        if (active) notify(error.message);
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    })();
+    return () => {active = false;};
+  }, []);
   const profile = boot?.profile, teacher = profile?.role === 'teacher';
   const current = detail && state?.posts.find(p => p.id === detail.id);
   return <>

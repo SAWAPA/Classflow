@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 import hashlib
+import os
 from package import package
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +39,15 @@ def main():
         key = 'classflow-templates/' + hashlib.sha256(template.encode()).hexdigest() + '.json'
         s3.put_object(Bucket=args.template_bucket, Key=key, Body=template.encode(), ContentType='application/json', ServerSideEncryption='AES256', ExpectedBucketOwner=account)
         request['TemplateURL'] = s3.generate_presigned_url('get_object', Params={'Bucket': args.template_bucket, 'Key': key}, ExpiresIn=3600)
+    google_client_id = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+    google_client_secret = os.environ.get('GOOGLE_CLIENT_SECRET', '').strip()
+    if bool(google_client_id) != bool(google_client_secret):
+        raise SystemExit('Both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required to enable Google Login.')
+    if google_client_id:
+        request['Parameters'] = [
+            {'ParameterKey': 'GoogleClientId', 'ParameterValue': google_client_id},
+            {'ParameterKey': 'GoogleClientSecret', 'ParameterValue': google_client_secret},
+        ]
     try:
         cf.describe_stacks(StackName=args.stack)
         try:
@@ -54,7 +64,14 @@ def main():
         print('AWS is deploying the stack. This may take several minutes.', flush=True)
         cf.get_waiter(waiter).wait(StackName=args.stack)
     outputs = {v['OutputKey']: v['OutputValue'] for v in cf.describe_stacks(StackName=args.stack)['Stacks'][0]['Outputs']}
-    config = {'region': outputs['Region'], 'userPoolId': outputs['UserPoolId'], 'clientId': outputs['ClientId'], 'apiUrl': outputs['ApiUrl']}
+    config = {
+        'region': outputs['Region'],
+        'userPoolId': outputs['UserPoolId'],
+        'clientId': outputs['ClientId'],
+        'apiUrl': outputs['ApiUrl'],
+        'cognitoDomain': outputs.get('CognitoDomain', ''),
+        'googleEnabled': outputs.get('GoogleAuthEnabled', 'false') == 'true',
+    }
     (ROOT / 'frontend/public/config.js').write_text('window.__CLASSROOM_CONFIG__ = ' + json.dumps(config) + ';\n', encoding='utf-8')
     if args.teacher_email:
         session.client('cognito-idp').admin_add_user_to_group(UserPoolId=outputs['UserPoolId'], Username=args.teacher_email, GroupName='teachers')

@@ -9,7 +9,14 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def publish(session, outputs):
-    config = {'region': outputs['Region'], 'userPoolId': outputs['UserPoolId'], 'clientId': outputs['ClientId'], 'apiUrl': outputs['ApiUrl']}
+    config = {
+        'region': outputs['Region'],
+        'userPoolId': outputs['UserPoolId'],
+        'clientId': outputs['ClientId'],
+        'apiUrl': outputs['ApiUrl'],
+        'cognitoDomain': outputs.get('CognitoDomain', ''),
+        'googleEnabled': outputs.get('GoogleAuthEnabled', 'false') == 'true',
+    }
     (ROOT / 'frontend/public/config.js').write_text('window.__CLASSROOM_CONFIG__ = ' + json.dumps(config) + ';\n', encoding='utf-8')
     import shutil
     npm = shutil.which('npm.cmd') or shutil.which('npm')

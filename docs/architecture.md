@@ -6,7 +6,7 @@
 flowchart LR
   U[ครู / นักเรียน<br/>React Browser] -->|HTTPS static assets| CF[CloudFront]
   CF -->|OAC signed requests| WEB[(Private S3<br/>Frontend)]
-  U -->|Sign up / sign in| AUTH[Cognito Lite]
+  U -->|Email sign in / Google OAuth| AUTH[Cognito Lite + Google IdP]
   AUTH -->|ID token| U
   U -->|Bearer JWT / JSON| API[API Gateway HTTP API<br/>JWT authorizer]
   API --> L[Lambda Python / ARM64<br/>Stateless classroom service]

@@ -45,8 +45,29 @@ export async function openFile(classId, fileId) {
 
 export function getGoogleAuthUrl() {
   const domain = config.cognitoDomain || import.meta.env.VITE_COGNITO_DOMAIN;
-  if (!domain || !config.clientId)
+  if (!domain || !config.clientId || config.googleEnabled === false || config.googleEnabled === 'false')
     return null;
-  const redirectUri = encodeURIComponent(window.location.origin + '/');
-  return `${domain.replace(/\/$/, '')}/oauth2/authorize?identity_provider=Google&client_id=${config.clientId}&response_type=token&scope=email+openid+profile&redirect_uri=${redirectUri}`;
+  const state = crypto.randomUUID ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+  sessionStorage.setItem('classflow-google-state', state);
+  const redirectUri = window.location.origin + '/';
+  const query = new URLSearchParams({identity_provider: 'Google', client_id: config.clientId, response_type: 'code', scope: 'email openid profile', redirect_uri: redirectUri, state});
+  return `${domain.replace(/\/$/, '')}/oauth2/authorize?${query.toString()}`;
+}
+
+export async function exchangeGoogleCode() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (!code) return null;
+  const expectedState = sessionStorage.getItem('classflow-google-state');
+  if (!expectedState || params.get('state') !== expectedState) {
+    sessionStorage.removeItem('classflow-google-state');
+    throw new Error('การยืนยัน Google Login ไม่ถูกต้อง กรุณาลองใหม่');
+  }
+  sessionStorage.removeItem('classflow-google-state');
+  const domain = config.cognitoDomain || import.meta.env.VITE_COGNITO_DOMAIN;
+  if (!domain || !config.clientId) throw new Error('ยังไม่ได้ตั้งค่า Google Login บน AWS');
+  const response = await fetch(`${domain.replace(/\/$/, '')}/oauth2/token`, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({grant_type: 'authorization_code', client_id: config.clientId, code, redirect_uri: window.location.origin + '/'})});
+  const result = await response.json();
+  if (!response.ok || !result.id_token) throw new Error(result.error_description || result.error || 'Google Login ไม่สำเร็จ');
+  return {token: result.id_token, refreshToken: result.refresh_token, expiresAt: Date.now() + Number(result.expires_in || 3600) * 1000};
 }
