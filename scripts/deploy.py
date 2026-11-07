@@ -26,8 +26,6 @@ def main():
     account = session.client('sts').get_caller_identity()['Account']
     if account != args.allow_account:
         raise SystemExit('Wrong AWS account; no changes made.')
-    if args.stack == 'live-auction-platform':
-        raise SystemExit('Use a new classroom stack; auction teardown is a separate explicit operation.')
     template_path = package()
     cf = session.client('cloudformation')
     template = template_path.read_text(encoding='utf-8')
@@ -65,3 +63,4 @@ def main():
 
 
 if __name__ == '__main__': main()
+
