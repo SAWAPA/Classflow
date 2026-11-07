@@ -1,0 +1,31 @@
+name: Classroom checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: python -m unittest discover -s backend -v
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - run: python scripts/package.py
+      - run: pip install cfn-lint
+      - run: cfn-lint -t build/classroom-stack.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: classroom-build
+          path: |
+            build/classroom-stack.json
+            frontend/dist

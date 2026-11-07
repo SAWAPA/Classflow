@@ -1,0 +1,663 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Cost-conscious serverless Live Auction Platform. The stack uses Lambda,
+  API Gateway WebSocket, DynamoDB, S3, EventBridge, and Cognito only.
+
+Resources:
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadForWebsite
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: connectionId
+          AttributeType: S
+        - AttributeName: auctionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: connectionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: auctionId-index
+          KeySchema:
+            - AttributeName: auctionId
+              KeyType: HASH
+            - AttributeName: connectionId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  AuctionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: auctionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: auctionId
+          KeyType: HASH
+
+  BidsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: auctionId
+          AttributeType: S
+        - AttributeName: bidId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: auctionId
+          KeyType: HASH
+        - AttributeName: bidId
+          KeyType: RANGE
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      MfaConfiguration: 'OFF'
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: false
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub '${AWS::StackName}-web-client'
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+
+  AuctionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: AuctionDataAndBroadcast
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:TransactWriteItems
+                Resource:
+                  - !GetAtt ConnectionsTable.Arn
+                  - !Sub '${ConnectionsTable.Arn}/index/*'
+                  - !GetAtt AuctionsTable.Arn
+                  - !GetAtt BidsTable.Arn
+              - Effect: Allow
+                Action:
+                  - execute-api:ManageConnections
+                Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/POST/@connections/*'
+
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${AWS::StackName}-websocket'
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: '$request.body.action'
+      Description: Real-time auction bidding channel
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: prod
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  AuthorizerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-authorizer'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt AuctionLambdaRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          USER_POOL_CLIENT_ID: !Ref UserPoolClient
+      Code:
+        ZipFile: |
+          const crypto = require('crypto');
+
+          let jwksCache;
+          let jwksExpiresAt = 0;
+
+          function decode(value) {
+            return Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+          }
+
+          function json(value) {
+            return JSON.parse(decode(value));
+          }
+
+          function getJwks(url) {
+            return new Promise((resolve, reject) => {
+              require('https').get(url, (response) => {
+                let data = '';
+                response.on('data', (chunk) => { data += chunk; });
+                response.on('end', () => {
+                  if (response.statusCode !== 200) return reject(new Error('jwks status ' + response.statusCode));
+                  try { resolve(JSON.parse(data)); } catch (error) { reject(error); }
+                });
+              }).on('error', reject);
+            });
+          }
+
+          function policy(principalId, effect, resource, context) {
+            return {
+              principalId,
+              policyDocument: {
+                Version: '2012-10-17',
+                Statement: [{ Action: 'execute-api:Invoke', Effect: effect, Resource: resource }]
+              },
+              context: context || {}
+            };
+          }
+
+          exports.handler = async (event) => {
+            try {
+              const query = event.queryStringParameters || {};
+              const raw = query.Authorization || query.authorization || '';
+              const token = raw.startsWith('Bearer ') ? raw.slice(7) : raw;
+              const [encodedHeader, encodedPayload, encodedSignature] = token.split('.');
+              if (!encodedHeader || !encodedPayload || !encodedSignature) throw new Error('missing token');
+              const header = json(encodedHeader);
+              const payload = json(encodedPayload);
+              const issuer = `https://cognito-idp.${process.env.AWS_REGION}.amazonaws.com/${process.env.USER_POOL_ID}`;
+              if (payload.iss !== issuer || !payload.sub || !payload.exp || payload.exp < Math.floor(Date.now() / 1000)) throw new Error('invalid claims');
+              if (payload.token_use !== 'id' && payload.token_use !== 'access') throw new Error('invalid token use');
+              if (payload.token_use === 'id' && payload.aud !== process.env.USER_POOL_CLIENT_ID) throw new Error('invalid audience');
+              if (payload.token_use === 'access' && payload.client_id !== process.env.USER_POOL_CLIENT_ID) throw new Error('invalid client');
+              if (Date.now() > jwksExpiresAt) {
+                jwksCache = await getJwks(`${issuer}/.well-known/jwks.json`);
+                jwksExpiresAt = Date.now() + 3600000;
+              }
+              const jwk = (jwksCache.keys || []).find((key) => key.kid === header.kid);
+              if (!jwk) throw new Error('unknown signing key');
+              const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+              const verifier = crypto.createVerify('RSA-SHA256');
+              verifier.update(`${encodedHeader}.${encodedPayload}`);
+              verifier.end();
+              if (!verifier.verify(publicKey, Buffer.from(encodedSignature.replace(/-/g, '+').replace(/_/g, '/'), 'base64'))) throw new Error('bad signature');
+              return policy(payload.sub, 'Allow', event.methodArn, {
+                sub: String(payload.sub),
+                email: String(payload.email || ''),
+                username: String(payload['cognito:username'] || payload.username || '')
+              });
+            } catch (error) {
+              console.log('authorization denied', error.message);
+              return policy('anonymous', 'Deny', event.methodArn, { reason: 'unauthorized' });
+            }
+          };
+
+  ConnectFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-connect'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt AuctionLambdaRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+      Code:
+        ZipFile: |
+          const { DynamoDBClient, PutItemCommand } = require('@aws-sdk/client-dynamodb');
+          const ddb = new DynamoDBClient({});
+          exports.handler = async (event) => {
+            const connectionId = event.requestContext.connectionId;
+            const auth = event.requestContext.authorizer || {};
+            const query = event.queryStringParameters || {};
+            const now = Math.floor(Date.now() / 1000);
+            await ddb.send(new PutItemCommand({
+              TableName: process.env.CONNECTIONS_TABLE,
+              Item: {
+                connectionId: { S: connectionId },
+                auctionId: { S: query.auctionId || 'lobby' },
+                userId: { S: String(auth.sub || 'unknown') },
+                userName: { S: String(auth.username || auth.email || 'participant') },
+                expiresAt: { N: String(now + 3600) }
+              }
+            }));
+            return { statusCode: 200, body: 'connected' };
+          };
+
+  DisconnectFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-disconnect'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt AuctionLambdaRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+      Code:
+        ZipFile: |
+          const { DynamoDBClient, DeleteItemCommand } = require('@aws-sdk/client-dynamodb');
+          const ddb = new DynamoDBClient({});
+          exports.handler = async (event) => {
+            await ddb.send(new DeleteItemCommand({
+              TableName: process.env.CONNECTIONS_TABLE,
+              Key: { connectionId: { S: event.requestContext.connectionId } }
+            }));
+            return { statusCode: 200, body: 'disconnected' };
+          };
+
+  MessageFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-messages'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt AuctionLambdaRole.Arn
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+          AUCTIONS_TABLE: !Ref AuctionsTable
+          BIDS_TABLE: !Ref BidsTable
+          CALLBACK_URL: !Sub 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${WebSocketStage}'
+      Code:
+        ZipFile: |
+          const crypto = require('crypto');
+          const { DynamoDBClient, PutItemCommand, GetItemCommand, UpdateItemCommand, ScanCommand, QueryCommand, TransactWriteItemsCommand } = require('@aws-sdk/client-dynamodb');
+          const { ApiGatewayManagementApiClient, PostToConnectionCommand, DeleteConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+          const ddb = new DynamoDBClient({});
+          const api = new ApiGatewayManagementApiClient({ endpoint: process.env.CALLBACK_URL });
+
+          const unmarshall = (item) => Object.fromEntries(Object.entries(item || {}).map(([key, value]) => [key, value.S ?? (value.N !== undefined ? Number(value.N) : value.BOOL)]));
+          const text = (value) => ({ S: String(value) });
+          const number = (value) => ({ N: String(value) });
+
+          async function send(connectionId, payload) {
+            try {
+              await api.send(new PostToConnectionCommand({ ConnectionId: connectionId, Data: Buffer.from(JSON.stringify(payload)) }));
+            } catch (error) {
+              if (error.statusCode === 410 || error.name === 'GoneException') {
+                await api.send(new DeleteConnectionCommand({ ConnectionId: connectionId }));
+              }
+              console.log('send failed', connectionId, error.name);
+            }
+          }
+
+          async function reply(connectionId, payload) {
+            await send(connectionId, payload);
+          }
+
+          async function broadcast(auctionId, payload) {
+            const result = await ddb.send(new QueryCommand({
+              TableName: process.env.CONNECTIONS_TABLE,
+              IndexName: 'auctionId-index',
+              KeyConditionExpression: 'auctionId = :auctionId',
+              ExpressionAttributeValues: { ':auctionId': text(auctionId) }
+            }));
+            await Promise.all((result.Items || []).map((item) => send(item.connectionId.S, payload)));
+          }
+
+          function identity(event) {
+            const auth = event.requestContext.authorizer || {};
+            return { id: String(auth.sub || 'unknown'), name: String(auth.username || auth.email || 'participant') };
+          }
+
+          async function createAuction(connectionId, body, user) {
+            const startingPrice = Number(body.startingPrice);
+            const minIncrement = Number(body.minIncrement);
+            const endsAt = new Date(body.endsAt).toISOString();
+            if (!body.title || !Number.isFinite(startingPrice) || !Number.isFinite(minIncrement) || minIncrement <= 0 || startingPrice < 0 || new Date(endsAt) <= new Date()) throw new Error('ข้อมูลรายการประมูลไม่ถูกต้อง');
+            const now = new Date().toISOString();
+            const item = { auctionId: text(crypto.randomUUID()), title: text(String(body.title).slice(0, 120)), description: text(String(body.description || '').slice(0, 500)), startingPrice: number(startingPrice), currentPrice: number(startingPrice), minIncrement: number(minIncrement), endsAt: text(endsAt), status: text('OPEN'), ownerId: text(user.id), ownerName: text(user.name), createdAt: text(now), updatedAt: text(now) };
+            await ddb.send(new PutItemCommand({ TableName: process.env.AUCTIONS_TABLE, Item: item }));
+            await reply(connectionId, { type: 'created', item: unmarshall(item) });
+            await broadcast('lobby', { type: 'auctionsChanged' });
+          }
+
+          async function listAuctions(connectionId) {
+            const result = await ddb.send(new ScanCommand({ TableName: process.env.AUCTIONS_TABLE, Limit: 100 }));
+            const items = (result.Items || []).map(unmarshall).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+            await reply(connectionId, { type: 'auctions', items });
+          }
+
+          async function getAuction(connectionId, auctionId) {
+            const result = await ddb.send(new GetItemCommand({ TableName: process.env.AUCTIONS_TABLE, Key: { auctionId: text(auctionId) } }));
+            if (!result.Item) throw new Error('ไม่พบรายการประมูล');
+            await reply(connectionId, { type: 'auction', item: unmarshall(result.Item) });
+          }
+
+          async function getHistory(connectionId, auctionId) {
+            const result = await ddb.send(new QueryCommand({ TableName: process.env.BIDS_TABLE, KeyConditionExpression: 'auctionId = :auctionId', ExpressionAttributeValues: { ':auctionId': text(auctionId) }, ScanIndexForward: false, Limit: 20 }));
+            await reply(connectionId, { type: 'history', items: (result.Items || []).map(unmarshall).reverse() });
+          }
+
+          async function placeBid(connectionId, body, user) {
+            const auctionId = String(body.auctionId || '');
+            const amount = Number(body.amount);
+            const current = await ddb.send(new GetItemCommand({ TableName: process.env.AUCTIONS_TABLE, Key: { auctionId: text(auctionId) } }));
+            if (!current.Item) throw new Error('ไม่พบรายการประมูล');
+            const auction = unmarshall(current.Item);
+            if (auction.status !== 'OPEN' || new Date(auction.endsAt) <= new Date()) throw new Error('รายการนี้ปิดแล้ว');
+            if (!Number.isFinite(amount) || amount < Number(auction.currentPrice) + Number(auction.minIncrement)) throw new Error(`ราคาต้องไม่น้อยกว่า ${Number(auction.currentPrice) + Number(auction.minIncrement)}`);
+            const now = new Date().toISOString();
+            const bidId = `${Date.now()}#${crypto.randomUUID()}`;
+            const bid = { auctionId: text(auctionId), bidId: text(bidId), amount: number(amount), bidderId: text(user.id), bidderName: text(user.name), createdAt: text(now) };
+            const updated = { ...auction, currentPrice: amount, highestBidderId: user.id, highestBidderName: user.name, updatedAt: now };
+            await ddb.send(new TransactWriteItemsCommand({ TransactItems: [
+              { Update: { TableName: process.env.AUCTIONS_TABLE, Key: { auctionId: text(auctionId) }, UpdateExpression: 'SET currentPrice = :amount, highestBidderId = :userId, highestBidderName = :userName, updatedAt = :now', ConditionExpression: '#status = :open AND currentPrice = :expected AND endsAt > :now', ExpressionAttributeNames: { '#status': 'status' }, ExpressionAttributeValues: { ':amount': number(amount), ':userId': text(user.id), ':userName': text(user.name), ':now': text(now), ':open': text('OPEN'), ':expected': number(Number(auction.currentPrice)) } } },
+              { Put: { TableName: process.env.BIDS_TABLE, Item: bid } }
+            ] }));
+            await broadcast(auctionId, { type: 'bidUpdate', item: updated, bid: unmarshall(bid) });
+          }
+
+          async function subscribe(connectionId, auctionId) {
+            await ddb.send(new UpdateItemCommand({ TableName: process.env.CONNECTIONS_TABLE, Key: { connectionId: text(connectionId) }, UpdateExpression: 'SET auctionId = :auctionId', ExpressionAttributeValues: { ':auctionId': text(auctionId) } }));
+            await getAuction(connectionId, auctionId);
+            await getHistory(connectionId, auctionId);
+          }
+
+          exports.handler = async (event) => {
+            const connectionId = event.requestContext.connectionId;
+            try {
+              const body = JSON.parse(event.body || '{}');
+              const user = identity(event);
+              if (body.action === 'createAuction') await createAuction(connectionId, body, user);
+              else if (body.action === 'listAuctions') await listAuctions(connectionId);
+              else if (body.action === 'getAuction') await getAuction(connectionId, String(body.auctionId));
+              else if (body.action === 'getHistory') await getHistory(connectionId, String(body.auctionId));
+              else if (body.action === 'placeBid') await placeBid(connectionId, body, user);
+              else if (body.action === 'subscribe') await subscribe(connectionId, String(body.auctionId));
+              else await reply(connectionId, { type: 'error', message: 'ไม่รู้จักคำสั่งนี้' });
+            } catch (error) {
+              console.log('message failed', error);
+              await reply(connectionId, { type: 'error', message: error.name === 'TransactionCanceledException' ? 'มีผู้เสนอราคาพร้อมกัน กรุณาลองใหม่' : error.message || 'เกิดข้อผิดพลาด' });
+            }
+            return { statusCode: 200, body: 'ok' };
+          };
+
+  AutoCloseFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-auto-close'
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt AuctionLambdaRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+          AUCTIONS_TABLE: !Ref AuctionsTable
+          CALLBACK_URL: !Sub 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${WebSocketStage}'
+      Code:
+        ZipFile: |
+          const { DynamoDBClient, ScanCommand, UpdateItemCommand, QueryCommand, DeleteItemCommand } = require('@aws-sdk/client-dynamodb');
+          const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+          const ddb = new DynamoDBClient({});
+          const api = new ApiGatewayManagementApiClient({ endpoint: process.env.CALLBACK_URL });
+          const text = (value) => ({ S: String(value) });
+          const unmarshall = (item) => Object.fromEntries(Object.entries(item || {}).map(([key, value]) => [key, value.S ?? (value.N !== undefined ? Number(value.N) : value.BOOL)]));
+          async function notify(connectionId, payload) {
+            try { await api.send(new PostToConnectionCommand({ ConnectionId: connectionId, Data: Buffer.from(JSON.stringify(payload)) })); } catch (error) { console.log('notify failed', connectionId, error.name); }
+          }
+          exports.handler = async () => {
+            const now = new Date().toISOString();
+            const result = await ddb.send(new ScanCommand({ TableName: process.env.AUCTIONS_TABLE, FilterExpression: '#status = :open AND endsAt <= :now', ExpressionAttributeNames: { '#status': 'status' }, ExpressionAttributeValues: { ':open': text('OPEN'), ':now': text(now) } }));
+            for (const item of result.Items || []) {
+              const auction = unmarshall(item);
+              try {
+                const updated = await ddb.send(new UpdateItemCommand({ TableName: process.env.AUCTIONS_TABLE, Key: { auctionId: text(auction.auctionId) }, UpdateExpression: 'SET #status = :closed, updatedAt = :now', ConditionExpression: '#status = :open', ExpressionAttributeNames: { '#status': 'status' }, ExpressionAttributeValues: { ':closed': text('CLOSED'), ':open': text('OPEN'), ':now': text(now) }, ReturnValues: 'ALL_NEW' }));
+                const connections = await ddb.send(new QueryCommand({ TableName: process.env.CONNECTIONS_TABLE, IndexName: 'auctionId-index', KeyConditionExpression: 'auctionId = :auctionId', ExpressionAttributeValues: { ':auctionId': text(auction.auctionId) } }));
+                await Promise.all((connections.Items || []).map((connection) => notify(connection.connectionId.S, { type: 'closed', item: unmarshall(updated.Attributes) })));
+              } catch (error) { console.log('close skipped', auction.auctionId, error.name); }
+            }
+            return { closed: result.Items?.length || 0 };
+          };
+
+  AuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AuthorizerFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
+
+  ConnectPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ConnectFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/$connect'
+
+  DisconnectPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref DisconnectFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/$disconnect'
+
+  MessagePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref MessageFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/*'
+
+  Authorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref WebSocketApi
+      Name: CognitoJwtAuthorizer
+      AuthorizerType: REQUEST
+      AuthorizerUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations'
+      IdentitySource:
+        - route.request.querystring.Authorization
+
+  ConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConnectFunction.Arn}/invocations'
+
+  DisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectFunction.Arn}/invocations'
+
+  MessageIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MessageFunction.Arn}/invocations'
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn: ConnectIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: '$connect'
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref Authorizer
+      Target: !Sub 'integrations/${ConnectIntegration}'
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn: DisconnectIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: '$disconnect'
+      Target: !Sub 'integrations/${DisconnectIntegration}'
+
+  CreateAuctionRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn: MessageIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: createAuction
+      Target: !Sub 'integrations/${MessageIntegration}'
+
+  ListAuctionsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn: MessageIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: listAuctions
+      Target: !Sub 'integrations/${MessageIntegration}'
+
+  GetAuctionRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn: MessageIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: getAuction
+      Target: !Sub 'integrations/${MessageIntegration}'
+
+  GetHistoryRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn: MessageIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: getHistory
+      Target: !Sub 'integrations/${MessageIntegration}'
+
+  PlaceBidRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn: MessageIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: placeBid
+      Target: !Sub 'integrations/${MessageIntegration}'
+
+  SubscribeRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn: MessageIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: subscribe
+      Target: !Sub 'integrations/${MessageIntegration}'
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn: MessageIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: '$default'
+      Target: !Sub 'integrations/${MessageIntegration}'
+
+  AutoCloseRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-auto-close-every-minute'
+      Description: Close expired auctions once per minute
+      ScheduleExpression: rate(1 minute)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt AutoCloseFunction.Arn
+          Id: AutoCloseTarget
+
+  AutoClosePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AutoCloseFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt AutoCloseRule.Arn
+
+Outputs:
+  FrontendBucketName:
+    Description: S3 bucket for the static frontend
+    Value: !Ref FrontendBucket
+  FrontendWebsiteUrl:
+    Description: Public S3 website URL for the demo
+    Value: !GetAtt FrontendBucket.WebsiteURL
+  WebSocketUrl:
+    Description: WebSocket endpoint used by the frontend
+    Value: !Sub 'wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${WebSocketStage}'
+  Region:
+    Description: AWS region
+    Value: !Ref AWS::Region
+  UserPoolId:
+    Description: Cognito user pool id
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito public web client id
+    Value: !Ref UserPoolClient
