@@ -54,7 +54,7 @@ python scripts/publish.py --allow-account 778655339518 --stack classflow-classro
 
 เมื่อ commit และ push การเปลี่ยนใต้ `frontend/` เข้า branch `main`, workflow `frontend-deploy.yml` จะ `npm ci`, build, อ่าน bucket/distribution จาก CloudFormation Outputs, ส่ง hashed assets และ invalidate entry point อัตโนมัติ การแก้ backend หรือ infrastructure ไม่ถูก deploy ด้วย workflow นี้
 
-ตั้ง Repository variables `AWS_DEPLOY_ROLE` และ `AWS_ACCOUNT_ID` ก่อนใช้งาน โดย role ใช้ GitHub OIDC และต้องผูก subject กับ `repo:SAWAPA/<repository>:ref:refs/heads/main` พร้อมสิทธิ์ขั้นต่ำตาม README ไม่เก็บ AWS access key หรือ password ใน repository
+ตั้ง Repository variables `AWS_DEPLOY_ROLE` และ `AWS_ACCOUNT_ID` ก่อนใช้งาน โดย role ใช้ GitHub OIDC และต้องผูก subject กับ `repo:SAWAPA/classflow-classroom:ref:refs/heads/main` พร้อมสิทธิ์ขั้นต่ำตาม README ไม่เก็บ AWS access key หรือ password ใน repository
 
 ## ไฟล์ Excel
 

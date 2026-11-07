@@ -100,7 +100,7 @@ scripts/publish.py เป็นทางเลือกสำรองสำห�
 - `AWS_DEPLOY_ROLE` เป็น ARN ของ IAM role ที่ trust GitHub Actions OIDC ของ repository นี้ และให้สิทธิ์เฉพาะ CloudFormation `DescribeStacks`, S3 `ListBucket/PutObject/DeleteObject` ของ frontend bucket และ CloudFront `CreateInvalidation` ของ distribution นี้
 - `AWS_ACCOUNT_ID` เป็น `778655339518`
 
-AWS role ต้องจำกัด trust policy ให้ repository `SAWAPA/<ชื่อ-repository>` และ branch `main` เท่านั้น ไม่ใช้ access key ถาวรใน GitHub
+AWS role ต้องจำกัด trust policy ให้ repository `SAWAPA/classflow-classroom` และ branch `main` เท่านั้น (`repo:SAWAPA/classflow-classroom:ref:refs/heads/main`) ไม่ใช้ access key ถาวรใน GitHub
 
 ## เอกสาร
 
