@@ -18,7 +18,7 @@
 - ทำไม serverless แทน EC2? ไม่มีเครื่องรันค้าง เหมาะกับโหลดห้องเรียนไม่ต่อเนื่อง แลกกับ cold start และข้อจำกัด timeout
 - ทำไม S3 แทนเก็บไฟล์ใน DB? แยก binary ออกจาก metadata, upload/download โดยตรง ลดการส่งไฟล์ผ่าน Lambda
 - ฐานข้อมูลอยู่ Private Subnet ไหม? DynamoDB เป็น managed service ไม่ได้วางใน VPC ของเรา ปิด public database access ด้วย IAM, นักเรียนไม่มี AWS credentials และเรียกได้เฉพาะ backend ที่ตรวจสมาชิกแล้ว ไม่ต้องซื้อ NAT Gateway
-- Login ปลอมเป็นครูได้ไหม? บทบาทจาก Cognito signed token กลุ่ม teachers ต้องกำหนดด้วย AWS admin ไม่มี dropdown เลื่อนสิทธิ์เองบน production
+- Login ปลอมเป็นครูได้ไหม? บทบาทจาก Cognito signed token กลุ่ม admins/teachers และ Admin จัดการยศผ่านหน้า Admin ไม่มี dropdown ให้ผู้ใช้ทั่วไปเลื่อนสิทธิ์เอง
 - นักเรียนเปลี่ยน URL เพื่ออ่านของเพื่อนได้ไหม? backend ตรวจ owner/context/member ทุกครั้ง มี unit tests และต้องยืนยันอีกครั้งบน cloud
 - คะแนน 0 ต่างจากยังไม่กรอกอย่างไร? 0 เป็นคะแนนจริง null คือรอคะแนน ไม่ออกเกรดจนกว่าจะครบหรือครูเลือก policy ให้นับเป็น 0
 - อิงกลุ่มเท่ากับ curve บวกคะแนนทุกคนไหม? ไม่ใช่ ใช้ตำแหน่ง Z-score ในกลุ่มและเส้นตัดที่ครูกำหนด SD=0 ใช้ Z=0 ตามที่แสดงในหน้า
@@ -40,3 +40,4 @@
 5 คะแนน Q&A: ใช้คำถามข้างต้นฝึกอธิบายด้วยหลักฐาน
 
 Bonus: สาธิต CI/CD ที่ทำงานจริง หรือ CloudWatch metrics/logs ที่ทำงานจริงก่อนอ้างคะแนนพิเศษ
+

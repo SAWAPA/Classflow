@@ -31,7 +31,7 @@ Playwright integration: ติดตั้ง playwright ตาม environment �
 6. การแก้เว็บครั้งต่อไป: build, package และ Update stack ด้วย template ใหม่ รอ UPDATE_COMPLETE
 7. ตัวเผยแพร่ส่ง hashed assets ก่อน config/index, ตั้ง cache ที่เหมาะสม และ invalidate เฉพาะ /index.html และ /config.js
 8. เข้า WebsiteUrl ที่เป็น HTTPS ตรวจว่าไม่มี local demo accounts
-9. สมัครบัญชีนักเรียนและยืนยันอีเมล สำหรับครูสมัครและยืนยันก่อน แล้ว AWS admin เพิ่มกลุ่ม teachers ใน Cognito UserPool ใหม่ Sign out/in เพื่อรับ token ใหม่
+9. สร้าง Admin ตัวแรกด้วย `python scripts/admin.py --email admin@example.com --allow-account 778655339518` แล้วเข้าสู่หน้า Admin เพื่อสร้างบัญชีและกำหนดยศอาจารย์/นักเรียน บัญชีที่ Admin สร้างไม่ต้องยืนยันอีเมล
 10. ทดสอบ permissions, file upload/download, grading/import/export และสองบัญชีจริงก่อนถือว่างาน cloud สำเร็จ
 
 ## CLI/SDK deployment
@@ -48,7 +48,7 @@ deploy.py สร้างหรืออัปเดตสแตกและห�
 python scripts/publish.py --allow-account 778655339518 --stack classflow
 ```
 
-หากเพิ่งสมัครและยืนยันบัญชีครูใน pool ใหม่ ใช้ deploy.py --teacher-email ตาม email ที่ยืนยันแล้ว หรือเพิ่มกลุ่ม teachers ผ่าน Console ผู้ใช้ไม่สามารถเลื่อนตัวเองเป็นครูจากเว็บได้
+หากใช้บัญชีสมัครเอง ผู้ใช้ต้องยืนยันอีเมลตามปกติ ส่วนบัญชีที่ Admin สร้างใช้รหัสผ่านที่ Admin ตั้งให้และเข้าใช้งานได้ทันที ผู้ใช้ทั่วไปไม่สามารถเลื่อนตัวเองเป็นครูหรือ Admin จากเว็บได้
 
 ## GitHub Actions เฉพาะหน้าเว็บ
 
@@ -79,3 +79,4 @@ python scripts/publish.py --allow-account 778655339518 --stack classflow
 ระบบใหม่: สำรองและ export คะแนน/ไฟล์ที่ต้องเก็บก่อน ถ้าจะลบจริง ให้ empty S3 สอง bucket ของสแตกใหม่, Delete stack และตรวจ DELETE_COMPLETE ไม่มีการลบ classroom อัตโนมัติผ่านสคริปต์ retire_auction
 
 code backup เดิมไม่ได้สำรอง AWS users/bids/DB data ที่ลบไปแล้ว ห้ามสรุปว่าข้อมูลเหล่านั้นกู้คืนได้จาก ZIP
+

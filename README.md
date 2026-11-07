@@ -8,7 +8,7 @@
 - ระบบใหม่ผ่านการทดสอบในเครื่อง และตรวจหน้าเว็บ/การป้องกัน API กับ S3 บน AWS แล้ว; การทดสอบครู–นักเรียนบน cloud ยังรอบัญชีที่ยืนยันอีเมล
 - ใช้โค้ด backend ชุดเดียวกันใน Local และ AWS Lambda; Local ใช้ SQLite และบัญชีตัวอย่าง ส่วน AWS ใช้ Cognito, DynamoDB และ S3 ส่วนตัว
 - สถานะ AWS จริงและรายการที่ยังรอ: ดู docs/deployment-status.md
-- โค้ดประมูลเดิมถูกแทนที่แล้ว สำรองไว้ใน legacy/live-auction-2026-11-07.zip เก็บ PDF เกณฑ์และ Proposal เดิมไว้เป็นเอกสารอ้างอิง
+- โค้ดประมูลเดิมถูกแทนที่แล้ว สำรองไว้ใน legacy/live-auction-2026-11-07.zip
 
 ## ทดลองในเครื่อง
 
@@ -102,6 +102,16 @@ scripts/publish.py เป็นทางเลือกสำรองสำห�
 
 AWS role ต้องจำกัด trust policy ให้ repository `SAWAPA/Classflow` และ branch `main` เท่านั้น (`repo:SAWAPA/Classflow:ref:refs/heads/main`) ไม่ใช้ access key ถาวรใน GitHub
 
+## Admin
+
+ผู้ดูแลระบบอยู่ใน Cognito group `admins` และใช้หน้า Admin เพื่อสร้างบัญชีโดยไม่ต้องยืนยันอีเมล กำหนดยศอาจารย์/นักเรียน และเปลี่ยนยศภายหลังได้ บัญชี Admin ตัวแรกให้สร้างด้วยคำสั่งนี้ โดยระบบจะถามรหัสผ่านแบบไม่แสดงผลและไม่เก็บไว้ใน Git:
+
+```powershell
+python scripts/admin.py --email admin@example.com --name "Classflow Admin" --allow-account 778655339518
+```
+
+รหัสผ่าน `admin` สั้นเกินไปและไม่ควรใช้ในระบบจริง; Cognito ต้องการอย่างน้อย 8 ตัว มีตัวพิมพ์เล็กและตัวเลข
+
 ## เอกสาร
 
 - docs/requirements.md - ขอบเขตและรายการตรวจรับ
@@ -110,3 +120,4 @@ AWS role ต้องจำกัด trust policy ให้ repository `SAWAPA/C
 - docs/presentation.md - ลำดับ demo และคำถามประกอบเกณฑ์
 - docs/runbook.md - ติดตั้ง, deploy, ตั้งครู, ทดสอบและรื้อระบบ
 - docs/deployment-status.md - สถานะ cloud ที่ยืนยันได้จริง
+

@@ -37,8 +37,26 @@ def clean(value):
 
 
 class Classroom:
-    def __init__(self, store, files):
-        self.db, self.files = store, files
+    def __init__(self, store, files, directory=None):
+        self.db, self.files, self.directory = store, files, directory
+
+    def admin_only(self, user):
+        if user.get('role') != 'admin' or self.directory is None:
+            raise PermissionError('เฉพาะผู้ดูแลระบบเท่านั้น')
+
+    def admin_create_user(self, user, data):
+        self.admin_only(user)
+        email = text(data.get('email'), 254)
+        if '@' not in email or email.startswith('@') or email.endswith('@'):
+            raise ValueError('อีเมลไม่ถูกต้อง')
+        name = text(data.get('name'), 120)
+        password = str(data.get('password') or '')
+        if len(password) < 8 or len(password) > 128 or not any(c.islower() for c in password) or not any(c.isdigit() for c in password):
+            raise ValueError('รหัสผ่านต้องยาวอย่างน้อย 8 ตัว มีตัวพิมพ์เล็กและตัวเลข ตามกติกา Cognito')
+        role = data.get('role', 'student')
+        if role not in ('teacher', 'student'):
+            raise ValueError('กำหนดยศได้เฉพาะครูหรือนักเรียน')
+        return self.directory.create_user(email, name, password, role)
 
     def profile(self, user):
         prior = self.db.get('U#' + user['id'], 'PROFILE') or {}
@@ -95,6 +113,18 @@ class Classroom:
             if student_id != profile['studentId'] and self.db.list('U#' + uid, 'CLASS#'):
                 raise ValueError('แก้รหัสนักเรียนหลังเข้าห้องเรียนไม่ได้ กรุณาติดต่อครู')
             return self.db.put('U#' + uid, 'PROFILE', {**profile, 'name': text(data.get('name'), 120), 'studentId': student_id})
+        if action == 'adminListUsers':
+            self.admin_only(user)
+            return self.directory.list_users()
+        if action == 'adminCreateUser':
+            return self.admin_create_user(user, data)
+        if action == 'adminSetUserRole':
+            self.admin_only(user)
+            target = text(data.get('userId'), 254)
+            role = data.get('role')
+            if role not in ('teacher', 'student'):
+                raise ValueError('กำหนดยศได้เฉพาะครูหรือนักเรียน')
+            return self.directory.set_role(target, role)
         if action == 'createClass':
             if user['role'] != 'teacher':
                 raise PermissionError('เฉพาะครูเท่านั้นที่สร้างห้องเรียนได้')
@@ -272,3 +302,4 @@ class Classroom:
                 self.db.put(pk, 'POST#' + post['id'], post, expected=post['_version'])
             return result
         raise ValueError('ไม่รู้จักคำสั่งนี้')
+

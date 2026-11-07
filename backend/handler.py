@@ -19,8 +19,55 @@ def claims_user(claims):
             groups = json.loads(groups)
         except ValueError:
             groups = groups.strip('[]').replace('"', '').split(',')
+    groups = {str(group).strip() for group in groups if str(group).strip()}
+    role = 'admin' if 'admins' in groups else 'teacher' if 'teachers' in groups else 'student'
     return {'id': claims['sub'], 'name': claims.get('name') or claims.get('email', 'สมาชิก'),
-            'email': claims.get('email', ''), 'role': 'teacher' if 'teachers' in groups else 'student'}
+            'email': claims.get('email', ''), 'role': role}
+
+
+class CognitoDirectory:
+    """Least-privilege Cognito user management used only after admin authorization."""
+    def __init__(self):
+        import boto3
+        self.pool_id = os.environ['USER_POOL_ID']
+        self.client = boto3.client('cognito-idp')
+
+    def _user(self, item):
+        attributes = {a['Name']: a['Value'] for a in item.get('Attributes', [])}
+        username = item['Username']
+        groups = {g['GroupName'] for g in self.client.admin_list_groups_for_user(UserPoolId=self.pool_id, Username=username).get('Groups', [])}
+        role = 'admin' if 'admins' in groups else 'teacher' if 'teachers' in groups else 'student'
+        return {'id': username, 'email': attributes.get('email', username), 'name': attributes.get('name', attributes.get('email', username)),
+                'role': role, 'status': item.get('UserStatus', 'UNKNOWN'), 'enabled': item.get('Enabled', True), 'createdAt': item.get('UserCreateDate').isoformat() if item.get('UserCreateDate') else None}
+
+    def list_users(self):
+        users, token = [], None
+        while True:
+            request = {'UserPoolId': self.pool_id, 'Limit': 60}
+            if token:
+                request['PaginationToken'] = token
+            response = self.client.list_users(**request)
+            users.extend(self._user(item) for item in response.get('Users', []))
+            token = response.get('PaginationToken')
+            if not token:
+                return sorted(users, key=lambda user: (user['role'] != 'admin', user['name'].lower()))
+
+    def create_user(self, email, name, password, role):
+        self.client.admin_create_user(UserPoolId=self.pool_id, Username=email,
+            UserAttributes=[{'Name': 'email', 'Value': email}, {'Name': 'email_verified', 'Value': 'true'}, {'Name': 'name', 'Value': name}],
+            MessageAction='SUPPRESS')
+        self.client.admin_set_user_password(UserPoolId=self.pool_id, Username=email, Password=password, Permanent=True)
+        if role == 'teacher':
+            self.client.admin_add_user_to_group(UserPoolId=self.pool_id, Username=email, GroupName='teachers')
+        response = self.client.admin_get_user(UserPoolId=self.pool_id, Username=email)
+        return self._user(response)
+
+    def set_role(self, user_id, role):
+        if role == 'teacher':
+            self.client.admin_add_user_to_group(UserPoolId=self.pool_id, Username=user_id, GroupName='teachers')
+        else:
+            self.client.admin_remove_user_from_group(UserPoolId=self.pool_id, Username=user_id, GroupName='teachers')
+        return self._user(self.client.admin_get_user(UserPoolId=self.pool_id, Username=user_id))
 
 
 def lambda_handler(event, context):
@@ -36,7 +83,7 @@ def lambda_handler(event, context):
             raise ValueError('ข้อมูลคำขอใหญ่เกินไป')
         body = json.loads(raw)
         if service is None:
-            service = Classroom(DynamoStore(), S3Files())
+            service = Classroom(DynamoStore(), S3Files(), CognitoDirectory())
         result = {'data': clean(service.run(user, body.get('action'), body.get('data') or {}))}
     except PermissionError as error:
         status, result = 403, {'error': str(error)}
@@ -49,3 +96,4 @@ def lambda_handler(event, context):
         status, result = 500, {'error': 'ระบบขัดข้องชั่วคราว กรุณาลองใหม่'}
     return {'statusCode': status, 'headers': {'Content-Type': 'application/json', 'Cache-Control': 'no-store'},
             'body': json.dumps(result, ensure_ascii=False, allow_nan=False)}
+

@@ -1,4 +1,4 @@
-name: Deploy Classflow frontend
+name: Deploy Classroom frontend
 
 on:
   push:
@@ -92,4 +92,3 @@ jobs:
         run: |
           aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" \
             --paths /index.html /config.js
-

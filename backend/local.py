@@ -19,7 +19,27 @@ USERS = [
     {'id': 'teacher-demo', 'name': 'อ.ณัฐวดี ศรีวิชา', 'email': 'teacher@example.test', 'role': 'teacher'},
     {'id': 'student-001', 'name': 'กานต์ธีรา แสงจันทร์', 'email': 'student@example.test', 'role': 'student'},
     {'id': 'student-002', 'name': 'ธนกร ใจดี', 'email': 'student2@example.test', 'role': 'student'},
+    {'id': 'admin-demo', 'name': 'ผู้ดูแลระบบ', 'email': 'admin@example.test', 'role': 'admin'},
 ]
+
+
+class LocalDirectory:
+    def list_users(self):
+        return [{'id': u['id'], 'name': u['name'], 'email': u['email'], 'role': u['role'], 'status': 'CONFIRMED', 'enabled': True} for u in USERS]
+
+    def create_user(self, email, name, password, role):
+        if any(u['email'].lower() == email.lower() for u in USERS):
+            raise ValueError('อีเมลนี้มีบัญชีอยู่แล้ว')
+        user = {'id': 'local-' + secrets.token_hex(6), 'name': name, 'email': email, 'role': role}
+        USERS.append(user)
+        return {**user, 'status': 'CONFIRMED', 'enabled': True}
+
+    def set_role(self, user_id, role):
+        user = next((u for u in USERS if u['id'] == user_id), None)
+        if not user or user['role'] == 'admin':
+            raise ValueError('ไม่พบผู้ใช้หรือไม่อนุญาตให้เปลี่ยนยศผู้ดูแล')
+        user['role'] = role
+        return {**user, 'status': 'CONFIRMED', 'enabled': True}
 
 
 class LocalFiles:
@@ -44,7 +64,7 @@ class LocalFiles:
 
 files = LocalFiles()
 db = LocalStore(DATA / 'classroom.sqlite3')
-app = Classroom(db, files)
+app = Classroom(db, files, LocalDirectory())
 
 
 def seed():
@@ -166,3 +186,4 @@ if __name__ == '__main__':
     port = int(os.environ.get('CLASSFLOW_LOCAL_PORT', '8000'))
     print(f'Classroom local API: http://127.0.0.1:{port} (demo identities only)', flush=True)
     ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()
+
