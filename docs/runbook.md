@@ -74,8 +74,4 @@ python scripts/publish.py --allow-account 778655339518 --stack classflow
 
 ## รื้อระบบ
 
-ระบบเก่า: scripts/retire_auction.py ใช้ account/stack ARN เดิมแบบเจาะจง ค่าเริ่มต้นเป็น dry run flag --delete-known-auction-stack จะลบถาวรเฉพาะสแตกนั้นและ log groups ของ Lambda ในนั้น ต้องตรวจสถานะก่อนใช้ซ้ำ
-
-ระบบใหม่: สำรองและ export คะแนน/ไฟล์ที่ต้องเก็บก่อน ถ้าจะลบจริง ให้ empty S3 สอง bucket ของสแตกใหม่, Delete stack และตรวจ DELETE_COMPLETE ไม่มีการลบ classroom อัตโนมัติผ่านสคริปต์ retire_auction
-
-code backup เดิมไม่ได้สำรอง AWS users/bids/DB data ที่ลบไปแล้ว ห้ามสรุปว่าข้อมูลเหล่านั้นกู้คืนได้จาก ZIP
+หากจะรื้อ Classflow ให้สำรองและ export คะแนน/ไฟล์ที่ต้องเก็บก่อน จากนั้น empty S3 สอง bucket ของสแตก, Delete stack และตรวจ `DELETE_COMPLETE` การลบเป็นการถาวรและไม่สามารถกู้คืนข้อมูลจาก source code ได้
