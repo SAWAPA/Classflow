@@ -1,4 +1,4 @@
-name: Deploy Classroom frontend
+name: Deploy Classflow frontend
 
 on:
   push:
