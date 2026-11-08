@@ -44,7 +44,7 @@ export async function rpc(action, data = {}) {
   if (!response.ok) throw new Error(result.error || `เกิดข้อผิดพลาด (${response.status})`);
   return result.data;
 }
-export const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.csv,.txt';
+export const ACCEPT = '*/*';
 export async function uploadFile(classId, entityId, context, file) {
   if (file.size > 25 * 1024 * 1024) throw new Error('ไฟล์ต้องไม่เกิน 25 MB');
   const result = await rpc('initUpload', {classId, entityId, context, filename: file.name, size: file.size});
