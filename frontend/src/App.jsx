@@ -12,6 +12,7 @@ const navigation = [[BookOpen, 'stream'], [ClipboardList, 'work'], [LayoutDashbo
 export default function App() {
   const [session, setSession] = useState(getSession), [boot, setBoot] = useState(null), [bootError, setBootError] = useState(''), [cid, setCid] = useState(''), [state, setState] = useState(null), [tab, setTab] = useState('stream'), [modal, setModal] = useState(null), [detail, setDetail] = useState(null), [grading, setGrading] = useState(null), [toast, setToast] = useState(''), [loading, setLoading] = useState(false);
   const [justSignedIn, setJustSignedIn] = useState(false);
+  const profile = boot?.profile, teacher = profile?.role === 'teacher';
   function notify(message) {setToast(message);}
   function login(value) {saveSession(value); setSession(value); setBoot(null); setBootError(''); setState(null); setCid(''); setJustSignedIn(true);}
   function logout() {const pending = signOut(); setSession(null); setState(null); setBoot(null); setBootError(''); setCid(''); setModal(null); setDetail(null); setGrading(null); pending.catch(error => notify(error.message));}
@@ -58,7 +59,6 @@ export default function App() {
     })();
     return () => {active = false;};
   }, []);
-  const profile = boot?.profile, teacher = profile?.role === 'teacher';
   const current = detail && state?.posts.find(p => p.id === detail.id);
   return <>
     {toast && <div className="toast" role="status"><AlertCircle size={18}/><span>{toast}</span><button className="icon-btn" aria-label="ปิดแจ้งเตือน" onClick={() => setToast('')}><X size={16}/></button></div>}
