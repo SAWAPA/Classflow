@@ -19,6 +19,7 @@ USERS = [
     {'id': 'teacher-demo', 'name': 'อ.ณัฐวดี ศรีวิชา', 'email': 'teacher@example.test', 'role': 'teacher'},
     {'id': 'student-001', 'name': 'กานต์ธีรา แสงจันทร์', 'email': 'student@example.test', 'role': 'student'},
     {'id': 'student-002', 'name': 'ธนกร ใจดี', 'email': 'student2@example.test', 'role': 'student'},
+    {'id': 'newbie-demo', 'name': 'ผู้ใช้ใหม่ (เพิ่งลงทะเบียน)', 'email': 'newbie@example.test', 'role': 'student'},
     {'id': 'admin-demo', 'name': 'ผู้ดูแลระบบ', 'email': 'admin@example.test', 'role': 'admin'},
 ]
 

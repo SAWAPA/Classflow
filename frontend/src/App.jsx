@@ -11,8 +11,9 @@ const navigation = [[BookOpen, 'stream'], [ClipboardList, 'work'], [LayoutDashbo
 
 export default function App() {
   const [session, setSession] = useState(getSession), [boot, setBoot] = useState(null), [bootError, setBootError] = useState(''), [cid, setCid] = useState(''), [state, setState] = useState(null), [tab, setTab] = useState('stream'), [modal, setModal] = useState(null), [detail, setDetail] = useState(null), [grading, setGrading] = useState(null), [toast, setToast] = useState(''), [loading, setLoading] = useState(false);
+  const [justSignedIn, setJustSignedIn] = useState(false);
   function notify(message) {setToast(message);}
-  function login(value) {saveSession(value); setSession(value); setBoot(null); setBootError(''); setState(null); setCid('');}
+  function login(value) {saveSession(value); setSession(value); setBoot(null); setBootError(''); setState(null); setCid(''); setJustSignedIn(true);}
   function logout() {const pending = signOut(); setSession(null); setState(null); setBoot(null); setBootError(''); setCid(''); setModal(null); setDetail(null); setGrading(null); pending.catch(error => notify(error.message));}
   async function bootstrap(nextId) {setBootError(''); try {const r = await rpc('bootstrap'); setBoot(r); setCid(prior => nextId || prior || r.courses[0]?.id || ''); return r;} catch (error) {setBootError(error.message); throw error;}}
   async function refresh() {if (cid) setState(await rpc('getClass', {classId: cid}));}
@@ -21,10 +22,13 @@ export default function App() {
   useEffect(() => {window.addEventListener('classflow-signed-out', logout); return () => window.removeEventListener('classflow-signed-out', logout);}, []);
   useEffect(() => {if (!toast) return; const timer = setTimeout(() => setToast(''), 8000); return () => clearTimeout(timer);}, [toast]);
   useEffect(() => {
-    if (profile && profile.role !== 'admin' && !profile.roleSelected && !boot?.courses?.length) {
-      setModal('role');
+    if (profile && profile.role !== 'admin') {
+      if (justSignedIn || !profile.roleSelected) {
+        setModal('role');
+        setJustSignedIn(false);
+      }
     }
-  }, [profile?.id, profile?.roleSelected, boot?.courses?.length]);
+  }, [profile?.id, profile?.roleSelected, justSignedIn]);
   useEffect(() => {
     let active = true;
     (async () => {
@@ -62,11 +66,11 @@ export default function App() {
       <aside className="sidebar"><div className="brand"><span><Layers/></span>classflow<span className="brand-dot">.</span></div><div className="workspace-label">YOUR WORKSPACE</div>
         <div className="class-select"><div className="class-icon"><BookOpen size={19}/></div><select aria-label="เลือกห้องเรียน" value={cid} onChange={e => {setCid(e.target.value); setTab('stream');}}>{!boot?.courses.length && <option value="">ห้องเรียนของฉัน</option>}{boot?.courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
         <nav>{navigation.map(([Icon, id]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={19}/>{labels[id]}{id === 'work' && state && <small>{state.posts.filter(p => p.kind === 'assignment').length}</small>}</button>)}</nav>
-        <div className="sidebar-bottom"><div className="sidebar-note"><span>MAKE ROOM FOR</span><strong>your next big idea.</strong><div className="note-flower">✳</div></div><button className="side-add" onClick={() => setModal('class')}><Plus size={18}/>{teacher ? 'สร้างห้องเรียน' : 'เข้าร่วมห้องเรียน'}</button><button className="profile-button" onClick={() => setModal('profile')}><Avatar name={profile?.name || '?'} small/><div><strong>{profile?.name || 'กำลังโหลด…'}</strong><small>{teacher ? 'อาจารย์' : 'นักเรียน'}</small></div><Settings size={16}/></button><button className="side-logout" onClick={logout}><LogOut size={15}/>ออกจากระบบ</button></div>
+        <div className="sidebar-bottom"><div className="sidebar-note"><span>MAKE ROOM FOR</span><strong>your next big idea.</strong><div className="note-flower">✳</div></div><button className="side-add" onClick={() => setModal('class')}><Plus size={18}/>{teacher ? 'สร้างห้องเรียน' : 'เข้าร่วมห้องเรียน'}</button><button className="profile-button" onClick={() => setModal('profile')}><Avatar name={profile?.name || '?'} small/><div><strong>{profile?.name || 'กำลังโหลด…'}</strong><small>{teacher ? 'อาจารย์' : 'นักเรียน'}</small></div><Settings size={16}/></button><button className="side-logout" style={{padding:'4px 8px', color:'var(--teal)'}} onClick={() => setModal('role')}>🔄 สลับบทบาท (ครู/นักเรียน)</button><button className="side-logout" onClick={logout}><LogOut size={15}/>ออกจากระบบ</button></div>
       </aside>
       <main className="main-content">
         {isLocal && <div className="local-banner"><span/>โหมดสาธิตในเครื่อง · ข้อมูลตัวอย่าง · ยังไม่ deploy ระบบใหม่บน AWS</div>}
-        <header className="topbar"><div className="breadcrumb">ห้องเรียนของฉัน<ChevronRight size={14}/><strong>{labels[tab]}</strong></div><div className="topbar-right"><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
+        <header className="topbar"><div className="breadcrumb">ห้องเรียนของฉัน<ChevronRight size={14}/><strong>{labels[tab]}</strong></div><div className="topbar-right"><button className="pill" style={{cursor:'pointer', padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}} onClick={() => setModal('role')}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'} (คลิกเพื่อเปลี่ยน)</button><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
         <div className="page-content">
           {loading ? <Empty icon={RefreshCw}>กำลังโหลดห้องเรียน…</Empty> : !state ? <div className="welcome-empty"><GraduationCap size={55}/><h1>เริ่มต้นพื้นที่เรียนรู้ของคุณ</h1><p className="muted">{teacher ? 'สร้างห้องเรียนแรก แล้วเชิญนักเรียนเข้ามาร่วมเรียนรู้' : 'ตั้งค่าโปรไฟล์ แล้วใช้รหัสห้องเรียนจากอาจารย์เพื่อเข้าร่วม'}</p><div className="button-group"><Btn icon={Plus} onClick={() => setModal('class')}>{teacher ? 'สร้างห้องเรียน' : 'เข้าร่วมห้องเรียน'}</Btn><Btn secondary onClick={() => setModal('profile')}>ตั้งค่าโปรไฟล์</Btn></div></div> : <>
             <section className={'course-hero ' + (tab !== 'stream' ? 'compact' : '')}><div className="hero-copy"><div className="hero-meta"><span>CLASSROOM / {state.course.subject}</span><Badge tone="glass">{teacher ? 'TEACHER SPACE' : 'STUDENT SPACE'}</Badge></div><h1>{state.course.name}</h1><p>{state.course.description || 'พื้นที่เรียนรู้และเติบโตไปด้วยกัน'}</p><div className="hero-footer"><Avatar name={state.course.teacherName} small/><span>{state.course.teacherName}</span><i/>ภาคเรียนของเรา</div></div><div className="hero-art"><div className="art-ring"/><div className="floating-book"><BookOpen size={55}/></div><div className="floating-star">✳</div><div className="little-card"><CheckMark/><span>Learning, in flow.</span></div></div></section>
@@ -85,7 +89,7 @@ export default function App() {
     </div>}
     {modal === 'class' && profile && <ClassForm teacher={teacher} close={() => setModal(null)} notify={notify} done={bootstrap}/>}
     {modal === 'profile' && profile && <Profile profile={profile} close={() => setModal(null)} done={async () => {await bootstrap(); await refresh();}} notify={notify} onOpenRole={!boot?.courses?.length ? () => setModal('role') : undefined}/>}
-    {modal === 'role' && profile && <RoleModal profile={profile} close={() => setModal(null)} done={async () => {await bootstrap(); await refresh();}} notify={notify} canClose={Boolean(profile.roleSelected || boot?.courses?.length)}/>}
+    {modal === 'role' && profile && <RoleModal profile={profile} close={() => setModal(null)} done={async () => {await bootstrap(); await refresh();}} notify={notify} canClose={true}/>}
     {modal === 'post' && state && <PostForm classId={cid} close={() => setModal(null)} done={refresh} notify={notify}/>}
     {current && <PostDetail post={current} state={state} profile={profile} close={() => setDetail(null)} refresh={refresh} notify={notify}/>}
     {grading && state && <Grading assessment={grading} state={state} close={() => setGrading(null)} refresh={refresh} notify={notify}/>}

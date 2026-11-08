@@ -120,7 +120,7 @@ class Classroom:
             role = data.get('role')
             if role not in ('teacher', 'student'):
                 raise ValueError('กรุณาเลือกระหว่างอาจารย์หรือนักเรียน')
-            if self.db.list('U#' + uid, 'CLASS#'):
+            if role != profile.get('role') and self.db.list('U#' + uid, 'CLASS#'):
                 raise ValueError('ไม่สามารถเปลี่ยนบทบาทได้หลังจากมีห้องเรียนแล้ว')
             student_id = text(data.get('studentId'), 32, False) if role == 'student' else ''
             name = text(data.get('name'), 120, False) or profile.get('name') or user.get('name')
