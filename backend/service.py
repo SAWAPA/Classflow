@@ -117,6 +117,8 @@ class Classroom:
         if action == 'selectRole':
             if user.get('role') == 'admin':
                 raise PermissionError('ผู้ดูแลระบบไม่สามารถเปลี่ยนบทบาทได้')
+            if profile.get('roleSelected'):
+                raise ValueError('ไม่สามารถเปลี่ยนบทบาทได้ เนื่องจากคุณได้เลือกบทบาทไปแล้ว')
             role = data.get('role')
             if role not in ('teacher', 'student'):
                 raise ValueError('กรุณาเลือกระหว่างอาจารย์หรือนักเรียน')
