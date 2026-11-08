@@ -8,12 +8,9 @@ import mimetypes
 
 from domain import DEFAULT_GRADING, build_report, numeric, validate_grading
 
-# MIME = {'.pdf': 'application/pdf', '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-#         '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-#         '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-#         '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.txt': 'text/plain', '.csv': 'text/csv'}
-mime_type = mimetypes.guess_type(filename)
-block_file_type = {'.exe', '.dll', '.so', '.dylib', '.com', '.msi', 'vsb', '.scr', '.bat', '.cmd', '.svg', '.app', '.dmg', '.iso'}
+BLOCKED_EXTENSIONS = {
+    '.exe', '.dll', '.so', '.dylib', '.com', '.msi', '.vbs', '.scr', '.bat', '.cmd', '.svg', '.app', '.dmg', '.iso', '.pif', '.lnk'
+}
 
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
@@ -298,14 +295,14 @@ class Classroom:
         if action == 'initUpload':
             entity_id, context = text(data.get('entityId'), 64), data.get('context')
             post = self.db.get(pk, 'POST#' + entity_id)
+            if not post or (context == 'post' and not teacher) or (context == 'submission' and (teacher or post['kind'] != 'assignment')) or context not in ('post', 'submission'):
+                raise PermissionError('ไม่มีสิทธิ์แนบไฟล์ที่นี่')
             filename = text(Path(str(data.get('filename', '')).replace('\\', '/')).name, 180)
             suffix = Path(filename).suffix.lower()
 
-            # 1. เช็คว่ามีนามสกุล และไม่ใช่นามสกุลอันตราย
             if not suffix or suffix in BLOCKED_EXTENSIONS:
                 raise ValueError('ไม่อนุญาตให้อัปโหลดไฟล์ประเภทนี้ (เช่น .exe, .bat, .svg)')
-
-            # 2. หา MIME Type อัตโนมัติด้วย mimetypes (ถ้าเป็นไฟล์โค้ดภาษาใหม่ๆ ให้มองเป็น text/plain)
+            
             mime = mimetypes.guess_type(filename)[0] or 'text/plain'
 
             size = int(numeric(data.get('size'), 1, 25 * 1024 * 1024))
