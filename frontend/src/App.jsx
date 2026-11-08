@@ -2,7 +2,7 @@ import {useEffect, useState} from 'react';
 import {BookOpen, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X} from 'lucide-react';
 import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode, signOut} from './api';
 import {Avatar, Badge, Btn, Empty} from './ui';
-import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading} from './forms';
+import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading, RoleModal} from './forms';
 import AdminPanel from './Admin';
 import {Stream, Work, Timeline, Messages} from './views';
 import Dashboard from './Dashboard';
@@ -20,6 +20,11 @@ export default function App() {
   useEffect(() => {if (!cid) return; let stale = false; setLoading(true); setState(null); rpc('getClass', {classId: cid}).then(r => {if (!stale) setState(r);}).catch(e => notify(e.message)).finally(() => {if (!stale) setLoading(false);}); return () => {stale = true;};}, [cid]);
   useEffect(() => {window.addEventListener('classflow-signed-out', logout); return () => window.removeEventListener('classflow-signed-out', logout);}, []);
   useEffect(() => {if (!toast) return; const timer = setTimeout(() => setToast(''), 8000); return () => clearTimeout(timer);}, [toast]);
+  useEffect(() => {
+    if (profile && profile.role !== 'admin' && !profile.roleSelected && !boot?.courses?.length) {
+      setModal('role');
+    }
+  }, [profile?.id, profile?.roleSelected, boot?.courses?.length]);
   useEffect(() => {
     let active = true;
     (async () => {
@@ -79,7 +84,8 @@ export default function App() {
       </main>
     </div>}
     {modal === 'class' && profile && <ClassForm teacher={teacher} close={() => setModal(null)} notify={notify} done={bootstrap}/>}
-    {modal === 'profile' && profile && <Profile profile={profile} close={() => setModal(null)} done={async () => {await bootstrap(); await refresh();}} notify={notify}/>}
+    {modal === 'profile' && profile && <Profile profile={profile} close={() => setModal(null)} done={async () => {await bootstrap(); await refresh();}} notify={notify} onOpenRole={!boot?.courses?.length ? () => setModal('role') : undefined}/>}
+    {modal === 'role' && profile && <RoleModal profile={profile} close={() => setModal(null)} done={async () => {await bootstrap(); await refresh();}} notify={notify} canClose={Boolean(profile.roleSelected || boot?.courses?.length)}/>}
     {modal === 'post' && state && <PostForm classId={cid} close={() => setModal(null)} done={refresh} notify={notify}/>}
     {current && <PostDetail post={current} state={state} profile={profile} close={() => setDetail(null)} refresh={refresh} notify={notify}/>}
     {grading && state && <Grading assessment={grading} state={state} close={() => setGrading(null)} refresh={refresh} notify={notify}/>}

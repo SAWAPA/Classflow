@@ -28,7 +28,32 @@ export function ClassForm({teacher, done, notify, close}) {
   const [busy, setBusy] = useState(false);
   return <Modal title={teacher ? 'สร้างห้องเรียน' : 'เข้าร่วมห้องเรียน'} close={close}><form onSubmit={async e => {e.preventDefault(); setBusy(true); const data = Object.fromEntries(new FormData(e.target)); try {const r = await rpc(teacher ? 'createClass' : 'joinClass', data); await done(r.id || r.classId); close();} catch (err) {notify(err.message);} finally {setBusy(false);}}}>{teacher ? <><Field label="ชื่อห้องเรียน" name="name" required maxLength={100}/><Field label="รหัสวิชา / ภาคเรียน" name="subject" required maxLength={100}/><Field label="คำอธิบาย" name="description" maxLength={500}/></> : <><p className="muted">ตั้งรหัสนักเรียนในโปรไฟล์ แล้วใช้รหัสจากอาจารย์เพื่อเข้าร่วม</p><Field label="รหัสเข้าห้องเรียน" name="code" required maxLength={20}/></>}<Btn disabled={busy}>{busy ? 'กำลังบันทึก…' : teacher ? 'สร้างห้องเรียน' : 'เข้าร่วม'}</Btn></form></Modal>;
 }
-export function Profile({profile, done, close, notify}) {return <Modal title="โปรไฟล์ของฉัน" close={close}><form onSubmit={async e => {e.preventDefault(); try {await rpc('updateProfile', Object.fromEntries(new FormData(e.target))); await done(); close();} catch (error) {notify(error.message);}}}><Field label="ชื่อ–นามสกุล" name="name" defaultValue={profile.name} required maxLength={120}/>{profile.role === 'student' && <Field label="รหัสนักเรียน / รหัสนักศึกษา" name="studentId" defaultValue={profile.studentId} required maxLength={32}/>}<p className="muted">รหัสนักเรียนใช้จับคู่ไฟล์คะแนน และเปลี่ยนไม่ได้หลังเข้าร่วมห้องเรียน</p><Btn>บันทึกโปรไฟล์</Btn></form></Modal>;}
+export function Profile({profile, done, close, notify, onOpenRole}) {return <Modal title="โปรไฟล์ของฉัน" close={close}><form onSubmit={async e => {e.preventDefault(); try {await rpc('updateProfile', Object.fromEntries(new FormData(e.target))); await done(); close();} catch (error) {notify(error.message);}}}><Field label="ชื่อ–นามสกุล" name="name" defaultValue={profile.name} required maxLength={120}/>{profile.role === 'student' && <Field label="รหัสนักเรียน / รหัสนักศึกษา" name="studentId" defaultValue={profile.studentId} required maxLength={32}/>}<p className="muted">รหัสนักเรียนใช้จับคู่ไฟล์คะแนน และเปลี่ยนไม่ได้หลังเข้าร่วมห้องเรียน</p><div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap', gap: '10px'}}>{onOpenRole ? <button type="button" className="text-btn" onClick={() => { close(); onOpenRole(); }}>🔄 เปลี่ยนบทบาท ({profile.role === 'teacher' ? 'อาจารย์' : 'นักเรียน'})</button> : <span/>}<Btn>บันทึกโปรไฟล์</Btn></div></form></Modal>;}
+export function RoleModal({profile, done, close, notify, canClose = true}) {
+  const [role, setRole] = useState(profile?.role === 'teacher' ? 'teacher' : 'student');
+  const [studentId, setStudentId] = useState(profile?.studentId || '');
+  const [name, setName] = useState(profile?.name || '');
+  const [busy, setBusy] = useState(false);
+  async function submit(e) {
+    e.preventDefault();
+    if (role === 'student' && !studentId.trim()) {
+      notify('กรุณากรอกรหัสนักเรียน');
+      return;
+    }
+    setBusy(true);
+    try {
+      await rpc('selectRole', {role, studentId: studentId.trim(), name: name.trim()});
+      notify(role === 'teacher' ? 'ยินดีต้อนรับ อาจารย์ ' + name : 'ยินดีต้อนรับ นักเรียน ' + name);
+      await done();
+      if (close) close();
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <Modal title="เลือกบทบาทของคุณในห้องเรียน" close={canClose ? close : undefined}><form onSubmit={submit}><p className="muted" style={{marginTop: '-12px', marginBottom: '18px'}}>กรุณาเลือกบทบาทเพื่อปรับแต่งพื้นที่ห้องเรียนให้เหมาะสม</p><div className="role-cards"><div className={`role-card ${role === 'teacher' ? 'active' : ''}`} onClick={() => setRole('teacher')} role="button" tabIndex={0}><div className="role-icon teacher"><GraduationCap size={26}/></div><div className="role-info"><strong>อาจารย์ / ผู้สอน</strong><small>สร้างห้องเรียน, มอบหมายงาน, ตรวจการบ้าน, ประเมิน Rubric และคำนวณตัดเกรด</small></div><div className="role-radio">{role === 'teacher' && <span>✓</span>}</div></div><div className={`role-card ${role === 'student' ? 'active' : ''}`} onClick={() => setRole('student')} role="button" tabIndex={0}><div className="role-icon student"><BookOpen size={26}/></div><div className="role-info"><strong>นักเรียน / ผู้เรียน</strong><small>เข้าร่วมห้องเรียนด้วยรหัสวิชา, ส่งงาน, ดูผลคะแนน/เกรด และสนทนากับอาจารย์</small></div><div className="role-radio">{role === 'student' && <span>✓</span>}</div></div></div><Field label="ชื่อ–นามสกุลของคุณ" value={name} required maxLength={120} onChange={e => setName(e.target.value)}/>{role === 'student' && <Field label="รหัสนักเรียน / รหัสนักศึกษา (Student ID)" value={studentId} required placeholder="เช่น 66010123" maxLength={32} onChange={e => setStudentId(e.target.value)}/><p className="muted" style={{marginTop: '-10px', marginBottom: '14px', fontSize: '11px'}}>รหัสนักเรียนใช้บันทึกคะแนนและส่งงาน</p>}<div className="modal-actions" style={{marginTop: '20px'}}><Btn disabled={busy} style={{width: '100%'}}>{busy ? 'กำลังบันทึก…' : 'ยืนยันและเริ่มต้นใช้งาน'}<ArrowUpRight size={16}/></Btn></div></form></Modal>;
+}
 export function PostForm({classId, close, done, notify}) {
   const [kind, setKind] = useState('assignment'), [rubric, setRubric] = useState([]), [files, setFiles] = useState([]), [busy, setBusy] = useState(false);
   async function submit(e) {

@@ -60,7 +60,11 @@ class Classroom:
 
     def profile(self, user):
         prior = self.db.get('U#' + user['id'], 'PROFILE') or {}
-        return {**prior, **user, 'name': prior.get('name') or user['name'], 'studentId': prior.get('studentId', '')}
+        role = user.get('role') if user.get('role') == 'admin' else (prior.get('role') or user.get('role', 'student'))
+        role_selected = bool(prior.get('roleSelected'))
+        return {**prior, **user, 'role': role, 'roleSelected': role_selected,
+                'name': prior.get('name') or user.get('name', 'สมาชิก'),
+                'studentId': prior.get('studentId', '')}
 
     def access(self, user, cid, teacher=False):
         course = self.db.get('C#' + cid, 'META')
@@ -104,10 +108,31 @@ class Classroom:
     def run(self, user, action, data):
         profile = self.profile(user)
         uid = user['id']
+        if user.get('role') != 'admin' and profile.get('role'):
+            user = {**user, 'role': profile['role']}
         if action == 'bootstrap':
             links = self.db.list('U#' + uid, 'CLASS#')
             courses = [self.db.get('C#' + l['classId'], 'META') for l in links]
             return {'profile': profile, 'courses': [{k: v for k, v in c.items() if k != 'grading'} for c in courses if c]}
+        if action == 'selectRole':
+            if user.get('role') == 'admin':
+                raise PermissionError('ผู้ดูแลระบบไม่สามารถเปลี่ยนบทบาทได้')
+            role = data.get('role')
+            if role not in ('teacher', 'student'):
+                raise ValueError('กรุณาเลือกระหว่างอาจารย์หรือนักเรียน')
+            if self.db.list('U#' + uid, 'CLASS#'):
+                raise ValueError('ไม่สามารถเปลี่ยนบทบาทได้หลังจากมีห้องเรียนแล้ว')
+            student_id = text(data.get('studentId'), 32, False) if role == 'student' else ''
+            name = text(data.get('name'), 120, False) or profile.get('name') or user.get('name')
+            new_profile = {**profile, 'role': role, 'roleSelected': True, 'name': name, 'studentId': student_id}
+            self.db.put('U#' + uid, 'PROFILE', new_profile)
+            if self.directory:
+                try:
+                    target_id = user.get('email') or user.get('username') or uid
+                    self.directory.set_role(target_id, role)
+                except Exception:
+                    pass
+            return new_profile
         if action == 'updateProfile':
             student_id = text(data.get('studentId'), 32, False)
             if student_id != profile['studentId'] and self.db.list('U#' + uid, 'CLASS#'):

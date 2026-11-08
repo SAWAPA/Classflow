@@ -167,5 +167,21 @@ class ClassroomTests(unittest.TestCase):
         post = self.run_action(self.teacher, 'createPost', kind='assignment', title='Rubric', dueAt=(dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=1)).isoformat(), maxScore=100, rubric=[{'title': 'Quality', 'max': 100}])
         with self.assertRaises(ValueError): self.run_action(self.teacher, 'grade', assessmentId=post['id'], userId='s1', score=80, rubricScores={'0': 70}, expectedVersion=0)
 
+    def test_user_select_role(self):
+        newbie = {'id': 'newbie', 'name': 'Newbie User', 'email': 'newbie@example.test', 'role': 'student'}
+        res = self.app.run(newbie, 'selectRole', {'role': 'teacher', 'name': 'Dr. Newbie'})
+        self.assertEqual(res['role'], 'teacher')
+        self.assertTrue(res['roleSelected'])
+        # Newbie can now create class as teacher
+        c = self.app.run(newbie, 'createClass', {'name': 'New Class', 'subject': 'NEW101'})
+        self.assertEqual(c['teacherName'], 'Dr. Newbie')
+        # Cannot switch role after having classes
+        with self.assertRaises(ValueError):
+            self.app.run(newbie, 'selectRole', {'role': 'student'})
+        # Admin cannot change role
+        admin = {'id': 'adm', 'name': 'Admin User', 'email': 'adm@example.test', 'role': 'admin'}
+        with self.assertRaises(PermissionError):
+            self.app.run(admin, 'selectRole', {'role': 'teacher'})
+
 
 if __name__ == '__main__': unittest.main()
