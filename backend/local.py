@@ -15,12 +15,36 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / '.local'
 DATA.mkdir(exist_ok=True)
 ORIGINS = {'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5180', 'http://127.0.0.1:5180'}
+STUDENTS_20 = [
+    ('67050001', 'กานต์ธีรา แสงจันทร์', 'student-001', 'student1@example.test'),
+    ('67050002', 'ธนกร ใจดี', 'student-002', 'student2@example.test'),
+    ('67050003', 'ปวีณา พรหมมา', 'student-003', 'student3@example.test'),
+    ('67050004', 'ภูริณัฐ วงศ์ทอง', 'student-004', 'student4@example.test'),
+    ('67050005', 'ศศิธร เมฆขาว', 'student-005', 'student5@example.test'),
+    ('67050006', 'ณัฐดนัย เกียรติสุข', 'student-006', 'student6@example.test'),
+    ('67050007', 'อริสรา มั่นคง', 'student-007', 'student7@example.test'),
+    ('67050008', 'กิตติพงศ์ อินทร์แก้ว', 'student-008', 'student8@example.test'),
+    ('67050009', 'ชนิกานต์ สุวรรณรัตน์', 'student-009', 'student9@example.test'),
+    ('67050010', 'ธนภัทร รัตนวิชัย', 'student-010', 'student10@example.test'),
+    ('67050011', 'เบญญาภา รุ่งเรือง', 'student-011', 'student11@example.test'),
+    ('67050012', 'ภัทรพล เจริญกุล', 'student-012', 'student12@example.test'),
+    ('67050013', 'วริศรา ศรีสุวรรณ', 'student-013', 'student13@example.test'),
+    ('67050014', 'สหรัฐ โชคชัย', 'student-014', 'student14@example.test'),
+    ('67050015', 'อธิปัตย์ พงษ์สวัสดิ์', 'student-015', 'student15@example.test'),
+    ('67050016', 'จิรภัทร ชัยวัฒนา', 'student-016', 'student16@example.test'),
+    ('67050017', 'ธนัชชา วงศ์สวัสดิ์', 'student-017', 'student17@example.test'),
+    ('67050018', 'พิมพ์พิชชา สุทธิกุล', 'student-018', 'student18@example.test'),
+    ('67050019', 'รัชพล ทวีทรัพย์', 'student-019', 'student19@example.test'),
+    ('67050020', 'วรเมธ วิริยพาณิชย์', 'student-020', 'student20@example.test'),
+]
+
 USERS = [
-    {'id': 'teacher-demo', 'name': 'อ.ณัฐวดี ศรีวิชา', 'email': 'teacher@example.test', 'role': 'teacher'},
-    {'id': 'student-001', 'name': 'กานต์ธีรา แสงจันทร์', 'email': 'student@example.test', 'role': 'student'},
-    {'id': 'student-002', 'name': 'ธนกร ใจดี', 'email': 'student2@example.test', 'role': 'student'},
-    {'id': 'newbie-demo', 'name': 'ผู้ใช้ใหม่ (เพิ่งลงทะเบียน)', 'email': 'newbie@example.test', 'role': 'student'},
-    {'id': 'admin-demo', 'name': 'ผู้ดูแลระบบ', 'email': 'admin@example.test', 'role': 'admin'},
+    {'id': 'teacher-demo', 'name': 'อ.ณัฐวดี ศรีวิชา', 'email': 'teacher@example.test', 'password': 'teacher1234', 'role': 'teacher'},
+    {'id': 'newbie-demo', 'name': 'ผู้ใช้ใหม่ (เพิ่งลงทะเบียน)', 'email': 'newbie@example.test', 'password': 'student1234', 'role': 'student'},
+    {'id': 'admin-demo', 'name': 'ผู้ดูแลระบบ', 'email': 'admin@example.test', 'password': 'admin1234', 'role': 'admin'},
+] + [
+    {'id': uid, 'name': name, 'email': email, 'studentId': sid, 'password': 'student1234', 'role': 'student'}
+    for sid, name, uid, email in STUDENTS_20
 ]
 
 
@@ -31,7 +55,7 @@ class LocalDirectory:
     def create_user(self, email, name, password, role):
         if any(u['email'].lower() == email.lower() for u in USERS):
             raise ValueError('อีเมลนี้มีบัญชีอยู่แล้ว')
-        user = {'id': 'local-' + secrets.token_hex(6), 'name': name, 'email': email, 'role': role}
+        user = {'id': 'local-' + secrets.token_hex(6), 'name': name, 'email': email, 'password': password, 'role': role}
         USERS.append(user)
         return {**user, 'status': 'CONFIRMED', 'enabled': True}
 
@@ -69,39 +93,126 @@ app = Classroom(db, files, LocalDirectory())
 
 
 def seed():
-    if db.get('SEED', 'VERSION2'):
+    if db.get('SEED', 'VERSION3_STUDENTS20'):
         return
     teacher = USERS[0]
-    course = app.run(teacher, 'createClass', {'name': 'Cloud Computing & Virtualization', 'subject': '05506258 · ภาคเรียน 2/2569', 'description': 'สร้างสิ่งที่เป็นไปได้ ด้วยพลังของคลาวด์'})
-    cid = course['id']
-    names = ['กานต์ธีรา แสงจันทร์', 'ธนกร ใจดี', 'ปวีณา พรหมมา', 'ภูริณัฐ วงศ์ทอง', 'ศศิธร เมฆขาว', 'ณัฐดนัย เกียรติสุข', 'อริสรา มั่นคง', 'กิตติพงศ์ อินทร์แก้ว']
-    for i, name in enumerate(names, 1):
-        user = USERS[i] if i <= 2 else {'id': f'student-{i:03}', 'name': name, 'email': f'student{i}@example.test', 'role': 'student'}
-        app.run(user, 'updateProfile', {'name': name, 'studentId': f'670500{i:02}'})
-        app.run(user, 'joinClass', {'code': course['joinCode']})
-    day = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=3)
-    post = app.run(teacher, 'createPost', {'classId': cid, 'kind': 'assignment', 'title': 'ออกแบบ Cloud Architecture',
-           'description': 'ออกแบบสถาปัตยกรรมสำหรับแอปพลิเคชันของคุณ อธิบาย Data Flow, Security และแผนควบคุมค่าใช้จ่าย ส่งเป็น PDF',
-           'dueAt': day.isoformat(), 'maxScore': 100, 'rubric': [{'title': 'ความถูกต้องของสถาปัตยกรรม', 'max': 40}, {'title': 'การออกแบบความปลอดภัย', 'max': 35}, {'title': 'เหตุผลและการนำเสนอ', 'max': 25}]})
-    app.run(teacher, 'createPost', {'classId': cid, 'kind': 'material', 'title': 'ยินดีต้อนรับสู่ห้องเรียนคลาวด์ ☁',
-            'description': 'พื้นที่เรียนรู้ แบ่งปัน และเติบโตไปด้วยกัน อ่านเนื้อหา ติดตามงาน และพูดคุยกับอาจารย์ได้ในที่เดียว'})
-    exam = app.run(teacher, 'createExam', {'classId': cid, 'title': 'สอบกลางภาค', 'maxScore': 100})
-    for i, score in enumerate([92, 88, 83, 77, 71, 64, 57, 42], 1):
-        uid = f'student-{i:03}'
-        db.put('C#' + cid, f"SUB#{post['id']}#{uid}", {'entity': 'submission', 'postId': post['id'], 'userId': uid, 'files': [], 'comment': 'ข้อมูลตัวอย่างสำหรับสาธิต', 'submittedAt': now(), 'late': i == 8, 'revision': 1})
-        for assessment in [post, exam]:
-            prior = db.get('C#' + cid, 'GRADE#' + assessment['id'])
-            app.run(teacher, 'grade', {'classId': cid, 'assessmentId': assessment['id'], 'userId': uid, 'score': score,
-                    'rubricScores': {'0': score * .4, '1': score * .35, '2': score * .25} if assessment == post else {},
-                    'feedback': 'ตรวจแล้ว ขอบคุณสำหรับความตั้งใจ', 'expectedVersion': prior['_version'] if prior else 0})
-    app.run(teacher, 'publishGrades', {'classId': cid})
-    db.put('SEED', 'VERSION2', {'done': True})
+    db.put('U#' + teacher['id'], 'PROFILE', {'role': 'teacher', 'name': teacher['name'], 'roleSelected': True})
+
+    # ค้นหาห้องเรียนทั้งหมดที่มีอยู่ในฐานข้อมูล
+    with db.connect() as conn:
+        rows = conn.execute("SELECT pk, data FROM records WHERE sk = 'META' AND pk LIKE 'C#%'").fetchall()
+
+    classrooms = []
+    for pk, raw in rows:
+        cid = pk.removeprefix('C#')
+        classrooms.append({'id': cid, **json.loads(raw)})
+
+    # ถ้ายังไม่มีห้องเรียน ให้สร้างห้องเรียนตัวอย่าง
+    if not classrooms:
+        course = app.run(teacher, 'createClass', {'name': 'Cloud Computing & Virtualization', 'subject': '05506258 · ภาคเรียน 2/2569', 'description': 'สร้างสิ่งที่เป็นไปได้ ด้วยพลังของคลาวด์'})
+        classrooms = [course]
+        day = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=3)
+        app.run(teacher, 'createPost', {'classId': course['id'], 'kind': 'assignment', 'title': 'ออกแบบ Cloud Architecture',
+               'description': 'ออกแบบสถาปัตยกรรมสำหรับแอปพลิเคชันของคุณ อธิบาย Data Flow, Security และแผนควบคุมค่าใช้จ่าย ส่งเป็น PDF',
+               'dueAt': day.isoformat(), 'maxScore': 100, 'rubric': [{'title': 'ความถูกต้องของสถาปัตยกรรม', 'max': 40}, {'title': 'การออกแบบความปลอดภัย', 'max': 35}, {'title': 'เหตุผลและการนำเสนอ', 'max': 25}]})
+        app.run(teacher, 'createPost', {'classId': course['id'], 'kind': 'material', 'title': 'ยินดีต้อนรับสู่ห้องเรียนคลาวด์ ☁',
+                'description': 'พื้นที่เรียนรู้ แบ่งปัน และเติบโตไปด้วยกัน อ่านเนื้อหา ติดตามงาน และพูดคุยกับอาจารย์ได้ในที่เดียว'})
+        app.run(teacher, 'createExam', {'classId': course['id'], 'title': 'สอบกลางภาค', 'maxScore': 100})
+
+    # บรรจุ Student 20 คนในแต่ละห้องเรียน
+    scores_curve = [95, 92, 88, 85, 83, 80, 78, 77, 74, 71, 68, 65, 64, 61, 58, 57, 54, 49, 45, 42]
+    for c in classrooms:
+        cid = c['id']
+        code = c.get('joinCode')
+        if not code:
+            code = secrets.token_hex(4).upper()
+            c['joinCode'] = code
+            db.put('C#' + cid, 'META', c)
+        db.put('JOIN', code, {'classId': cid})
+
+        existing_members = db.list('C#' + cid, 'MEMBER#')
+        existing_uids = {m['userId'] for m in existing_members if m.get('role') == 'student'}
+        existing_sids = {m.get('studentId') for m in existing_members if m.get('studentId')}
+
+        for std_id, name, uid, email in STUDENTS_20:
+            profile = {
+                'id': uid,
+                'name': name,
+                'email': email,
+                'role': 'student',
+                'roleSelected': True,
+                'studentId': std_id,
+            }
+            db.put('U#' + uid, 'PROFILE', profile)
+            if uid not in existing_uids or std_id not in existing_sids:
+                db.put('C#' + cid, 'STUDENT#' + std_id, {'userId': uid})
+                db.put('C#' + cid, 'MEMBER#' + uid, {**profile, 'entity': 'member', 'userId': uid})
+                db.put('U#' + uid, 'CLASS#' + cid, {'classId': cid})
+
+        posts = db.list('C#' + cid, 'POST#')
+        assignments = [p for p in posts if p.get('kind') == 'assignment']
+        exams = db.list('C#' + cid, 'EXAM#')
+
+        for a in assignments:
+            prior_gb = db.get('C#' + cid, 'GRADE#' + a['id'])
+            scores_dict = (prior_gb or {}).get('scores', {})
+            for i, (std_id, name, uid, email) in enumerate(STUDENTS_20):
+                score = scores_curve[i % len(scores_curve)]
+                sub_key = f"SUB#{a['id']}#{uid}"
+                if not db.get('C#' + cid, sub_key):
+                    db.put('C#' + cid, sub_key, {
+                        'entity': 'submission',
+                        'postId': a['id'],
+                        'userId': uid,
+                        'files': [],
+                        'comment': f'งานมอบหมายส่งโดย {name}',
+                        'submittedAt': now(),
+                        'late': i >= 17,
+                        'revision': 1
+                    })
+                scores_dict[uid] = {
+                    'score': score,
+                    'rubricScores': {},
+                    'feedback': 'ตรวจแล้วเรียบร้อย ผลงานยอดเยี่ยม' if score >= 80 else 'ตรวจแล้ว ตั้งใจพัฒนาต่อไป',
+                    'gradedAt': now()
+                }
+            db.put('C#' + cid, 'GRADE#' + a['id'], {
+                'entity': 'gradebook',
+                'assessmentId': a['id'],
+                'scores': scores_dict,
+                'updatedAt': now()
+            })
+
+        for ex in exams:
+            prior_gb = db.get('C#' + cid, 'GRADE#' + ex['id'])
+            scores_dict = (prior_gb or {}).get('scores', {})
+            for i, (std_id, name, uid, email) in enumerate(STUDENTS_20):
+                score = scores_curve[i % len(scores_curve)]
+                scores_dict[uid] = {
+                    'score': score,
+                    'feedback': 'คะแนนสอบกลางภาค',
+                    'gradedAt': now()
+                }
+            db.put('C#' + cid, 'GRADE#' + ex['id'], {
+                'entity': 'gradebook',
+                'assessmentId': ex['id'],
+                'scores': scores_dict,
+                'updatedAt': now()
+            })
+
+        if assignments or exams:
+            try:
+                app.run(teacher, 'publishGrades', {'classId': cid})
+            except Exception:
+                pass
+
+    db.put('SEED', 'VERSION3_STUDENTS20', {'done': True})
 
 
 class Handler(BaseHTTPRequestHandler):
     def cors(self):
         origin = self.headers.get('Origin', '')
-        if origin in ORIGINS:
+        if origin and (origin in ORIGINS or origin.startswith(('http://localhost:', 'http://127.0.0.1:'))):
             self.send_header('Access-Control-Allow-Origin', origin)
         self.send_header('Vary', 'Origin')
         self.send_header('Access-Control-Allow-Headers', 'Authorization,Content-Type')
@@ -121,6 +232,43 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            if self.path in ('/auth/login', '/login'):
+                length = int(self.headers.get('Content-Length', 0))
+                body = json.loads(self.rfile.read(length)) if length > 0 else {}
+                login_id = (body.get('email') or body.get('username') or '').strip().lower()
+                pwd = str(body.get('password') or '').strip()
+                user = None
+                for u in USERS:
+                    if (u.get('email', '').strip().lower() == login_id or
+                        u.get('id', '').strip().lower() == login_id or
+                        u.get('studentId', '').strip().lower() == login_id):
+                        user = u
+                        break
+                if not user or user.get('password') != pwd:
+                    return self.respond(400, {'error': 'อีเมลหรือรหัสผ่านไม่ถูกต้อง (ตัวอย่างรหัสผ่าน: student1234 หรือ teacher1234)'})
+                return self.respond(200, {
+                    'token': 'dev:' + user['id'],
+                    'user': {'id': user['id'], 'name': user['name'], 'email': user['email'], 'role': user['role']}
+                })
+
+            if self.path in ('/auth/signup', '/signup'):
+                length = int(self.headers.get('Content-Length', 0))
+                body = json.loads(self.rfile.read(length)) if length > 0 else {}
+                email = body.get('email', '').strip().lower()
+                name = body.get('name', '').strip()
+                pwd = str(body.get('password') or '').strip()
+                if not email or not pwd:
+                    return self.respond(400, {'error': 'กรุณากรอกอีเมลและรหัสผ่าน'})
+                try:
+                    user = app.directory.create_user(email, name or email.split('@')[0], pwd, 'student')
+                    db.put('U#' + user['id'], 'PROFILE', {'role': 'student', 'name': user['name'], 'roleSelected': False})
+                    return self.respond(200, {
+                        'token': 'dev:' + user['id'],
+                        'user': {'id': user['id'], 'name': user['name'], 'email': user['email'], 'role': user['role']}
+                    })
+                except Exception as e:
+                    return self.respond(400, {'error': str(e)})
+
             if self.path != '/rpc':
                 return self.respond(404, {'error': 'Not found'})
             token = self.headers.get('Authorization', '').replace('Bearer dev:', '')
