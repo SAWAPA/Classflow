@@ -1036,12 +1036,63 @@ export default function App() {
               </div>
             ) : <>
               <section className={'course-hero ' + (tab !== 'stream' ? 'compact' : '')}><div className="hero-copy"><div className="hero-meta"><span>CLASSROOM / {state.course.subject}</span><Badge tone="glass">{teacher ? 'TEACHER SPACE' : 'STUDENT SPACE'}</Badge></div><h1>{state.course.name}</h1><p>{state.course.description || 'พื้นที่เรียนรู้และเติบโตไปด้วยกัน'}</p><div className="hero-footer"><Avatar name={state.course.teacherName} small/><span>{state.course.teacherName}</span><i/>ภาคเรียนของเรา</div></div><div className="hero-art"><div className="art-ring"/><div className="floating-book"><BookOpen size={55}/></div><div className="floating-star">✳</div><div className="little-card"><CheckMark/><span>Learning, in flow.</span></div></div></section>
-              {tab === 'stream' && <div className="overview-row">{[[ClipboardList, 'งานที่มอบหมาย', state.posts.filter(p => p.kind === 'assignment').length, 'ชิ้น'], [Users, teacher ? 'นักเรียนในห้อง' : 'ห้องเรียนของฉัน', teacher ? state.members.filter(m => m.role === 'student').length : boot.courses.length, teacher ? 'คน' : 'ห้อง'], [FileText, 'เนื้อหาการเรียน', state.posts.filter(p => p.kind === 'material').length, 'โพสต์']].map(([Icon, label, count, unit]) => <div key={label}><span className="overview-icon"><Icon size={21}/></span><div><small>{label}</small><strong>{count}<span>{unit}</span></strong></div><ArrowUpRight size={16}/></div>)}</div>}
+              {tab === 'stream' && <div className="overview-row">{[[ClipboardList, 'งานที่มอบหมาย', state.posts.filter(p => p.kind === 'assignment').length, 'ชิ้น'], [Users, teacher ? 'นักเรียนในห้อง' : 'เพื่อนร่วมชั้น', state.members.filter(m => m.role === 'student').length, 'คน'], [FileText, 'เนื้อหาการเรียน', state.posts.filter(p => p.kind === 'material').length, 'โพสต์']].map(([Icon, label, count, unit]) => <div key={label}><span className="overview-icon"><Icon size={21}/></span><div><small>{label}</small><strong>{count}<span>{unit}</span></strong></div><ArrowUpRight size={16}/></div>)}</div>}
               <div className="content-tabs">{['stream', 'work', 'dashboard', 'people', 'messages', 'timeline'].map(id => <button className={tab === id ? 'active' : ''} key={id} onClick={() => setTab(id)}>{labels[id]}</button>)}{teacher && <button className="quick-create" onClick={() => setModal('post')}><Plus size={16}/> สร้างโพสต์</button>}</div>
               {tab === 'stream' && <Stream state={state} profile={profile} open={handleOpenPost} create={() => setModal('post')}/>}
               {tab === 'work' && <Work state={state} states={homeStates} courses={boot?.courses || []} profile={profile} open={handleOpenPost} grade={handleGradeAssessment} create={() => setModal('post')}/>}
               {tab === 'dashboard' && <Dashboard key={cid} state={state} profile={profile} refresh={refresh} notify={notify} grade={setGrading}/>}
-              {tab === 'people' && <section className="panel"><div className="section-title"><h2>{teacher ? 'ทุกคนในห้องเรียน' : 'อาจารย์และโปรไฟล์ของฉัน'}</h2><Badge>{state.members.length} คน</Badge></div>{state.members.map(m => <div className="person-row" key={m.userId}><Avatar name={m.name}/><div><strong>{m.name}</strong><small>{m.studentId || m.email}</small></div><Badge tone={m.role === 'teacher' ? '' : 'gray'}>{m.role === 'teacher' ? 'อาจารย์' : 'นักเรียน'}</Badge></div>)}</section>}
+              {tab === 'people' && (() => {
+                const teachers = state.members.filter(m => m.role === 'teacher' || m.userId === state.course.ownerId);
+                const students = state.members.filter(m => m.role !== 'teacher' && m.userId !== state.course.ownerId);
+                return (
+                  <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
+                    <section className="panel">
+                      <div className="section-title">
+                        <div>
+                          <div className="eyebrow">TEACHERS</div>
+                          <h2>ครู / อาจารย์ผู้สอน</h2>
+                        </div>
+                        <Badge tone="blue">{teachers.length} ท่าน</Badge>
+                      </div>
+                      {teachers.map(m => (
+                        <div className="person-row" key={m.userId}>
+                          <Avatar name={m.name}/>
+                          <div>
+                            <strong>{m.name} {m.userId === profile.id && <span style={{fontSize: '11px', color: 'var(--muted)'}}>(คุณ)</span>}</strong>
+                            <small>{m.email || 'ผู้สอนประจำวิชา'}</small>
+                          </div>
+                          <Badge tone="blue">อาจารย์ผู้สอน</Badge>
+                        </div>
+                      ))}
+                    </section>
+                    <section className="panel">
+                      <div className="section-title">
+                        <div>
+                          <div className="eyebrow">MEMBERS</div>
+                          <h2>{teacher ? 'นักเรียนทั้งหมดในห้อง' : 'เพื่อนร่วมชั้นเรียน'}</h2>
+                        </div>
+                        <Badge>{students.length} คน</Badge>
+                      </div>
+                      {students.length ? (
+                        students.map(m => (
+                          <div className="person-row" key={m.userId}>
+                            <Avatar name={m.name}/>
+                            <div>
+                              <strong>{m.name} {m.userId === profile.id && <span style={{fontSize: '11px', color: 'var(--accent, #173f45)', fontWeight: 600}}>(ฉัน)</span>}</strong>
+                              <small>{m.studentId ? `รหัสนักศึกษา: ${m.studentId}` : m.email}</small>
+                            </div>
+                            <Badge tone={m.userId === profile.id ? 'green' : 'gray'}>
+                              {m.userId === profile.id ? 'ฉัน' : 'นักเรียน'}
+                            </Badge>
+                          </div>
+                        ))
+                      ) : (
+                        <Empty icon={Users}>ยังไม่มีเพื่อนร่วมชั้นในห้องเรียนนี้</Empty>
+                      )}
+                    </section>
+                  </div>
+                );
+              })()}
               {tab === 'messages' && <Messages key={cid} state={state} profile={profile} notify={notify}/>}
               {tab === 'timeline' && <Timeline state={state} profile={profile} open={handleOpenPost}/>}
             </>}

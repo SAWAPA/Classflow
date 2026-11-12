@@ -256,13 +256,23 @@ class Classroom:
         teacher = course['ownerId'] == user['id']
         posts = sorted([r for r in rows if r.get('entity') == 'post'], key=lambda r: r['createdAt'], reverse=True)
         students = [r for r in rows if r.get('entity') == 'member']
+        owner_id = course.get('ownerId')
+        if owner_id and not any(m.get('userId') == owner_id for m in students):
+            teacher_profile = self.db.get('U#' + owner_id, 'PROFILE') or {}
+            students.insert(0, {
+                'entity': 'member',
+                'userId': owner_id,
+                'name': course.get('teacherName') or teacher_profile.get('name') or 'อาจารย์',
+                'email': teacher_profile.get('email', ''),
+                'role': 'teacher',
+                'studentId': ''
+            })
         submissions = [r for r in rows if r.get('entity') == 'submission' and (teacher or r['userId'] == user['id'])]
         gradebooks = {r['assessmentId']: r['scores'] if teacher else {user['id']: r['scores'][user['id']]} if user['id'] in r['scores'] else {} for r in rows if r.get('entity') == 'gradebook'}
         publication = next((r for r in rows if r.get('entity') == 'publication'), None)
         if publication and not teacher:
             publication = {'publishedAt': publication['publishedAt'], 'rows': [r for r in publication['rows'] if r['userId'] == user['id']]}
         if not teacher:
-            students = [r for r in students if r['userId'] in (user['id'], course['ownerId'])]
             course = {k: v for k, v in course.items() if k not in ('joinCode', 'grading')}
         course['version'] = course.get('_version', 0)
         return {'course': course, 'membership': member, 'posts': posts, 'members': students, 'submissions': submissions,

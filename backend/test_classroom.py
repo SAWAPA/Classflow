@@ -89,7 +89,7 @@ class ClassroomTests(unittest.TestCase):
         self.assertNotIn('s2', snapshot['gradebooks'][self.post['id']])
         self.assertEqual(len(snapshot['publication']['rows']), 1)
         self.assertEqual(snapshot['publication']['rows'][0]['userId'], 's1')
-        self.assertNotIn('s2', [m['userId'] for m in snapshot['members']])
+        self.assertIn('s2', [m['userId'] for m in snapshot['members']])
 
     def test_score_boundaries_and_nan(self):
         for score in (-1, 101, float('nan'), float('inf'), True):
