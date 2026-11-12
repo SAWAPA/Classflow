@@ -1,5 +1,5 @@
 import {useEffect, useState, useMemo, useRef} from 'react';
-import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X, Bell, Check, Upload, CheckCircle2} from 'lucide-react';
+import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, ChevronDown, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X, Bell, Check, Upload, CheckCircle2} from 'lucide-react';
 import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode, signOut} from './api';
 import {Avatar, Badge, Btn, Empty, date} from './ui';
 import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading, RoleModal} from './forms';
@@ -227,6 +227,106 @@ function NotificationBell({homeStates = [], profile, teacher, onOpenPost, onGrad
   );
 }
 
+function ClassSelector({cid, courses = [], onSelectCourse, onGoHome}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  const selectedCourse = courses.find(c => c.id === cid);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [open]);
+
+  return (
+    <div className="custom-class-select-wrapper" ref={ref}>
+      <button
+        type="button"
+        className={`custom-class-select ${open ? 'open' : ''} ${cid ? 'has-course' : ''}`}
+        onClick={() => setOpen(prev => !prev)}
+        aria-expanded={open}
+        aria-label="เลือกห้องเรียน"
+      >
+        <div className="class-select-icon">
+          {cid ? <BookOpen size={16}/> : <Home size={16}/>}
+        </div>
+        <div className="class-select-text">
+          <strong>{selectedCourse ? selectedCourse.name : 'หน้าหลัก · ห้องเรียนทั้งหมด'}</strong>
+          <small>{selectedCourse ? (selectedCourse.teacherName ? `อาจารย์ ${selectedCourse.teacherName}` : selectedCourse.subject || 'ห้องเรียน') : 'ดูภาพรวมทุกวิชา'}</small>
+        </div>
+        <div className={`class-select-arrow ${open ? 'open' : ''}`}>
+          <ChevronDown size={15}/>
+        </div>
+      </button>
+
+      {open && (
+        <div className="class-dropdown-menu">
+          <div className="class-dropdown-header">
+            <span>พื้นที่เรียนรู้</span>
+          </div>
+
+          <div
+            className={`class-dropdown-item ${!cid ? 'active' : ''}`}
+            onClick={() => {
+              onGoHome();
+              setOpen(false);
+            }}
+          >
+            <div className="item-icon home">
+              <Home size={15}/>
+            </div>
+            <div className="item-info">
+              <strong>หน้าหลัก · ห้องเรียนทั้งหมด</strong>
+              <small>ดูภาพรวม สรุปงาน และกิจกรรมทุกวิชา</small>
+            </div>
+            {!cid && <Check size={15} className="item-check"/>}
+          </div>
+
+          {courses.length > 0 && (
+            <>
+              <div className="class-dropdown-divider"/>
+              <div className="class-dropdown-header">
+                <span>ห้องเรียนของคุณ ({courses.length})</span>
+              </div>
+              <div className="class-dropdown-list">
+                {courses.map(c => {
+                  const isCurrent = c.id === cid;
+                  return (
+                    <div
+                      key={c.id}
+                      className={`class-dropdown-item ${isCurrent ? 'active' : ''}`}
+                      onClick={() => {
+                        onSelectCourse(c.id);
+                        setOpen(false);
+                      }}
+                    >
+                      <div className="item-icon course">
+                        <BookOpen size={15}/>
+                      </div>
+                      <div className="item-info">
+                        <strong>{c.name}</strong>
+                        <small>{c.teacherName ? `อาจารย์ ${c.teacherName}` : c.subject || 'ห้องเรียน'}</small>
+                      </div>
+                      {isCurrent && <Check size={15} className="item-check"/>}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(getSession), [boot, setBoot] = useState(null), [bootError, setBootError] = useState(''), [cid, setCid] = useState(''), [lastCid, setLastCid] = useState(''), [state, setState] = useState(null), [homeStates, setHomeStates] = useState([]), [homeLoading, setHomeLoading] = useState(false), [homeRefreshKey, setHomeRefreshKey] = useState(0), [tab, setTab] = useState('home'), [modal, setModal] = useState(null), [detail, setDetail] = useState(null), [grading, setGrading] = useState(null), [toast, setToast] = useState(''), [loading, setLoading] = useState(false);
   const profile = boot?.profile, teacher = profile?.role === 'teacher';
@@ -374,7 +474,7 @@ export default function App() {
     {toast && <div className="toast" role="status"><AlertCircle size={18}/><span>{toast}</span><button className="icon-btn" aria-label="ปิดแจ้งเตือน" onClick={() => setToast('')}><X size={16}/></button></div>}
     {!session ? <Auth onLogin={login} notify={notify}/> : !boot ? <div className="welcome-empty"><RefreshCw size={45}/><h1>{bootError ? 'เข้าสู่ระบบไม่สำเร็จ' : 'กำลังตรวจสอบสิทธิ์…'}</h1><p className="muted">{bootError || 'ระบบกำลังเลือกหน้าให้ตรงกับยศของคุณ'}</p>{bootError && <Btn onClick={() => bootstrap().catch(() => {})}>ลองใหม่</Btn>}</div> : profile?.role === 'admin' ? <AdminPanel profile={profile} logout={logout} notify={notify}/> : <div className="app-shell">
       <aside className="sidebar"><div className="brand"><span><Layers/></span>classflow<span className="brand-dot">.</span></div><div className="workspace-label">YOUR WORKSPACE</div>
-        <div className="class-select"><div className="class-icon"><BookOpen size={19}/></div><select aria-label="เลือกห้องเรียน" value={cid} onChange={e => e.target.value ? openClass(e.target.value) : goHome()}><option value="">หน้าหลัก · ห้องเรียนทั้งหมด</option>{boot?.courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <ClassSelector cid={cid} courses={boot?.courses || []} onSelectCourse={openClass} onGoHome={goHome}/>
         <nav>{navigation.map(([Icon, id]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => handleNav(id)}><Icon size={19}/>{labels[id]}{id === 'work' && totalAssignmentsCount > 0 && <small>{totalAssignmentsCount}</small>}</button>)}</nav>
         <div className="sidebar-bottom"><div className="sidebar-note"><span>MAKE ROOM FOR</span><strong>your next big idea.</strong><div className="note-flower">✳</div></div><button className="side-add" onClick={() => setModal('class')}><Plus size={18}/>{teacher ? 'สร้างห้องเรียน' : 'เข้าร่วมห้องเรียน'}</button><button className="profile-button" onClick={() => setModal('profile')}><Avatar name={profile?.name || '?'} small/><div><strong>{profile?.name || 'กำลังโหลด…'}</strong><small>{teacher ? 'อาจารย์' : 'นักเรียน'}</small></div><Settings size={16}/></button><button className="side-logout" onClick={logout}><LogOut size={15}/>ออกจากระบบ</button></div>
       </aside>
