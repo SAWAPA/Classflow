@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {BookOpen, ClipboardList, CalendarDays, Clock, Sparkles, ArrowUpRight, ChevronRight, Plus, MessageCircle, Paperclip, RefreshCw, Send} from 'lucide-react';
+import {BookOpen, ClipboardList, CalendarDays, Clock, Sparkles, ArrowUpRight, ChevronRight, Plus, MessageCircle, Paperclip, RefreshCw, Send, AlertCircle, CheckCircle2, Filter} from 'lucide-react';
 import {rpc} from './api';
 import {Avatar, Badge, Btn, Empty, date} from './ui';
 
@@ -8,188 +8,334 @@ export function Stream({state, profile, open, create}) {
   return <div className="two-column"><section><button className="composer" onClick={teacher ? create : undefined}><Avatar name={profile.name}/><span>{teacher ? 'วันนี้อยากแบ่งปันอะไรกับชั้นเรียน?' : 'พร้อมเรียนรู้สิ่งใหม่ไปด้วยกัน'}</span>{teacher && <Plus size={20}/>}</button><div className="section-title"><h2>เรื่องราวในชั้นเรียน <span className="muted small-text">{state.posts.length} โพสต์</span></h2><span className="eyebrow">LATEST UPDATES</span></div>{state.posts.map(post => <article className="post-card" key={post.id}><div className="post-author"><div className={`post-symbol ${post.kind}`}>{post.kind === 'assignment' ? <ClipboardList size={21}/> : <BookOpen size={21}/>}</div><div><strong>{post.authorName}</strong><small>{date(post.createdAt)}</small></div><Badge tone={post.kind === 'assignment' ? 'orange' : ''}>{post.kind === 'assignment' ? 'มอบหมายงาน' : 'เนื้อหา'}</Badge></div><button className="post-open" onClick={() => open(post)}><h3>{post.title}</h3><p>{post.description}</p>{post.kind === 'assignment' && <div className="post-due"><Clock size={14}/><span>กำหนดส่ง {date(post.dueAt)}</span><strong>{post.maxScore} คะแนน</strong></div>}<span className="post-link">{post.kind === 'assignment' ? 'ดูงานและรายละเอียด' : 'อ่านเนื้อหาและความคิดเห็น'}<ArrowUpRight size={16}/></span></button><div className="post-bottom"><MessageCircle size={15}/>{state.comments.filter(c => c.postId === post.id).length} ความคิดเห็น{post.files.length > 0 && <span><Paperclip size={14}/> {post.files.length} ไฟล์แนบ</span>}</div></article>)}{!state.posts.length && <Empty>ยังไม่มีโพสต์ในห้องเรียนนี้</Empty>}</section><aside><div className="side-card"><div className="section-title"><h3>กำลังจะถึง</h3><CalendarDays size={18}/></div>{assignments.filter(p => new Date(p.dueAt) >= new Date()).sort((a, b) => a.dueAt.localeCompare(b.dueAt)).slice(0, 4).map(p => <button className="upcoming" key={p.id} onClick={() => open(p)}><div className="date-tile"><strong>{new Date(p.dueAt).getDate()}</strong><small>{new Date(p.dueAt).toLocaleDateString('th-TH', {month: 'short'})}</small></div><div><strong>{p.title}</strong><small>{date(p.dueAt)}</small></div><ChevronRight size={15}/></button>)}{!assignments.some(p => new Date(p.dueAt) >= new Date()) && <p className="muted">ยังไม่มีกำหนดส่งงานถัดไป</p>}</div><div className="tip-card"><Sparkles size={23}/><h3>ทุกความก้าวหน้า<br/>มีความหมาย</h3><p>ค่อย ๆ เรียนรู้ ลงมือทำ และถามเมื่อสงสัย ห้องเรียนนี้พร้อมเติบโตไปกับคุณ</p><div className="tip-line"/></div>{teacher && <div className="side-card"><small className="eyebrow">INVITE YOUR CLASS</small><h3>รหัสเข้าห้องเรียน</h3><div className="join-code">{state.course.joinCode}</div><p className="muted">ส่งรหัสนี้ให้นักเรียนเข้าร่วม</p></div>}</aside></div>;
 }
 export function Work({state, states = [], courses = [], profile, open, grade, create}) {
-  const [filter, setFilter] = useState('all');
-  const [courseFilter, setCourseFilter] = useState(state?.course?.id || 'all');
-
-  useEffect(() => {
-    if (state?.course?.id) {
-      setCourseFilter(state.course.id);
-    }
-  }, [state?.course?.id]);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'overdue' | 'submitted'
+  const [courseFilter, setCourseFilter] = useState('all');
 
   const entries = states.length ? states : (state ? [state] : []);
   const availableCourses = courses.length
     ? courses
     : entries.map(e => e.course).filter(Boolean);
 
-  const allPosts = entries.flatMap(s => (s?.posts || []).map(p => {
-    const isTeacher = profile?.id === s.course?.ownerId;
-    const submitted = (s.submissions || []).filter(sub => sub.postId === p.id);
-    const graded = Object.keys(s.gradebooks?.[p.id] || {}).length;
-    const mine = (s.submissions || []).find(sub => sub.postId === p.id && sub.userId === profile?.id);
-    const gradeInfo = s.gradebooks?.[p.id]?.[profile?.id];
-    return {
-      ...p,
-      course: s.course,
-      courseId: s.course?.id,
-      submissions: s.submissions || [],
-      submittedCount: submitted.length,
-      gradedCount: graded,
-      mine,
-      gradeInfo,
-      isTeacher
-    };
-  }));
+  const now = new Date();
 
-  const activeCourseId = state?.course?.id || courseFilter;
-  const courseFiltered = activeCourseId === 'all'
-    ? allPosts
-    : allPosts.filter(p => p.courseId === activeCourseId);
+  // ดึงรายการงานที่ได้รับมอบหมายทั้งหมดจากทุกห้องเรียน
+  const allAssignments = entries.flatMap(s => (s?.posts || [])
+    .filter(p => p.kind === 'assignment')
+    .map(p => {
+      const isTeacher = profile?.id === s.course?.ownerId;
+      const submissions = s.submissions || [];
+      const mine = submissions.find(sub => sub.postId === p.id && sub.userId === profile?.id);
+      const submitted = submissions.filter(sub => sub.postId === p.id);
+      const graded = Object.keys(s.gradebooks?.[p.id] || {}).length;
+      const gradeInfo = s.gradebooks?.[p.id]?.[profile?.id];
+      const dueDate = p.dueAt ? new Date(p.dueAt) : null;
+      const isOverdue = Boolean(dueDate && dueDate < now);
+      const memberCount = Math.max(1, (s.members || []).filter(m => m.role === 'student').length);
 
-  const isTeacher = profile?.role === 'teacher';
-  const filtered = courseFiltered.filter(p => {
-    if (filter === 'all') return true;
-    if (filter === 'assignment') return p.kind === 'assignment';
-    if (filter === 'material') return p.kind === 'material';
-    if (filter === 'pending') return p.kind === 'assignment' && !p.mine;
-    if (filter === 'submitted') return p.kind === 'assignment' && Boolean(p.mine);
-    if (filter === 'toGrade') return p.kind === 'assignment' && p.submittedCount > p.gradedCount;
-    return true;
-  });
+      // แยกเป็น 3 สถานะที่ตัดขาดจากกันโดยสิ้นเชิง (Mutually Exclusive)
+      let category = 'pending';
+      if (!isTeacher) {
+        if (mine) {
+          category = 'submitted';
+        } else if (isOverdue) {
+          category = 'overdue';
+        } else {
+          category = 'pending';
+        }
+      } else {
+        // ฝั่งครูผู้สอน
+        if (submitted.length > 0 && submitted.length === graded) {
+          category = 'submitted';
+        } else if (isOverdue) {
+          category = 'overdue';
+        } else {
+          category = 'pending';
+        }
+      }
 
-  // เรียงลำดับจากกำหนดส่งใกล้ไปไกล (Earliest due date to latest)
-  const sortedPosts = [...filtered].sort((a, b) => {
-    if (a.dueAt && b.dueAt) {
-      const diff = new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
-      if (diff !== 0) return diff;
-    }
-    if (a.dueAt && !b.dueAt) return -1;
-    if (!a.dueAt && b.dueAt) return 1;
-    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
-  });
+      return {
+        ...p,
+        course: s.course,
+        courseId: s.course?.id,
+        mine,
+        gradeInfo,
+        submittedCount: submitted.length,
+        gradedCount: graded,
+        memberCount,
+        isTeacher,
+        isOverdue,
+        dueDate,
+        category
+      };
+    })
+  );
 
-  return <>
-    <div className="section-title">
-      <div>
-        <h2>งานในชั้นเรียน</h2>
-        <p className="muted">
-          {activeCourseId === 'all'
-            ? `รวมงานทั้งหมดจากทุกห้องเรียน · เรียงตามกำหนดส่งจากใกล้ไปไกล (${sortedPosts.length} รายการ)`
-            : `งานของห้องเรียน ${availableCourses.find(c => c.id === activeCourseId)?.name || state?.course?.name} · เรียงตามกำหนดส่ง (${sortedPosts.length} รายการ)`}
-        </p>
+  // กรองตามรายวิชาที่เลือก
+  const courseFiltered = courseFilter === 'all'
+    ? allAssignments
+    : allAssignments.filter(p => p.courseId === courseFilter);
+
+  // แยกรายการ 3 แถบออกจากกันโดยสิ้นเชิง พร้อมเรียงตามกำหนดส่ง
+  const pendingList = courseFiltered
+    .filter(p => p.category === 'pending')
+    .sort((a, b) => {
+      if (a.dueAt && b.dueAt) return new Date(a.dueAt) - new Date(b.dueAt);
+      if (a.dueAt && !b.dueAt) return -1;
+      if (!a.dueAt && b.dueAt) return 1;
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
+
+  const overdueList = courseFiltered
+    .filter(p => p.category === 'overdue')
+    .sort((a, b) => {
+      if (a.dueAt && b.dueAt) return new Date(a.dueAt) - new Date(b.dueAt);
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
+
+  const submittedList = courseFiltered
+    .filter(p => p.category === 'submitted')
+    .sort((a, b) => {
+      const aTime = new Date(a.mine?.submittedAt || a.mine?.createdAt || a.createdAt || 0).getTime();
+      const bTime = new Date(b.mine?.submittedAt || b.mine?.createdAt || b.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+
+  const currentList = activeTab === 'pending'
+    ? pendingList
+    : activeTab === 'overdue'
+      ? overdueList
+      : submittedList;
+
+  const isGlobalTeacher = profile?.role === 'teacher';
+
+  return (
+    <div className="tab-pane">
+      <div className="section-title">
+        <div>
+          <h2>งานในชั้นเรียน</h2>
+          <p className="muted">
+            {courseFilter === 'all'
+              ? `รวมงานทั้งหมดจากทุกรายวิชา (${allAssignments.length} งาน)`
+              : `งานในรายวิชา ${availableCourses.find(c => c.id === courseFilter)?.name || ''} (${courseFiltered.length} งาน)`}
+          </p>
+        </div>
+        {isGlobalTeacher && (
+          <Btn icon={Plus} onClick={create}>สร้างงาน / การบ้าน</Btn>
+        )}
       </div>
-      {isTeacher && <Btn icon={Plus} onClick={create}>สร้างงาน / เนื้อหา</Btn>}
-    </div>
 
-    {availableCourses.length > 1 && (
-      <div className="filter-row" style={{marginBottom: '10px'}}>
+      {/* แถบฟิวเตอร์เลือกรายวิชา */}
+      {availableCourses.length > 0 && (
+        <div className="work-filter-bar">
+          <div className="filter-title">
+            <Filter size={15}/>
+            <span>รายวิชา:</span>
+          </div>
+          <div className="filter-chips">
+            <button
+              className={`filter-chip ${courseFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setCourseFilter('all')}
+            >
+              ทุกรายวิชา <span className="chip-badge">{allAssignments.length}</span>
+            </button>
+            {availableCourses.map(c => {
+              const count = allAssignments.filter(p => p.courseId === c.id).length;
+              return (
+                <button
+                  key={c.id}
+                  className={`filter-chip ${courseFilter === c.id ? 'active' : ''}`}
+                  onClick={() => setCourseFilter(c.id)}
+                >
+                  {c.name} <span className="chip-badge">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* แถบสลับ 3 หมวดหมู่หลัก แยกออกจากกันโดยสิ้นเชิง */}
+      <div className="assignment-tabs">
         <button
-          className={`pill ${courseFilter === 'all' ? 'active' : ''}`}
-          onClick={() => setCourseFilter('all')}
+          className={`assignment-tab ${activeTab === 'pending' ? 'active' : ''}`}
+          onClick={() => setActiveTab('pending')}
         >
-          ทุกห้องเรียน ({allPosts.length})
+          <Clock size={16}/>
+          <span>ยังไม่ส่ง</span>
+          <span className="tab-counter pending">{pendingList.length}</span>
         </button>
-        {availableCourses.map(c => (
-          <button
-            key={c.id}
-            className={`pill ${courseFilter === c.id ? 'active' : ''}`}
-            onClick={() => setCourseFilter(c.id)}
-          >
-            {c.name}
-          </button>
-        ))}
+
+        <button
+          className={`assignment-tab ${activeTab === 'overdue' ? 'active overdue' : ''}`}
+          onClick={() => setActiveTab('overdue')}
+        >
+          <AlertCircle size={16}/>
+          <span>เลยกำหนดส่ง</span>
+          <span className={`tab-counter ${overdueList.length > 0 ? 'overdue' : ''}`}>
+            {overdueList.length}
+          </span>
+        </button>
+
+        <button
+          className={`assignment-tab ${activeTab === 'submitted' ? 'active submitted' : ''}`}
+          onClick={() => setActiveTab('submitted')}
+        >
+          <CheckCircle2 size={16}/>
+          <span>ส่งแล้ว</span>
+          <span className="tab-counter submitted">{submittedList.length}</span>
+        </button>
       </div>
-    )}
 
-    <div className="filter-row">
-      {[
-        ['all', 'ทั้งหมด'],
-        ['assignment', 'งานที่มอบหมาย'],
-        ['material', 'เนื้อหาการเรียน'],
-        ...(!isTeacher
-          ? [['pending', 'การบ้านที่ยังไม่ส่ง'], ['submitted', 'ส่งแล้ว']]
-          : [['toGrade', 'งานที่รอตรวจ']])
-      ].map(([v, t]) => (
-        <button
-          key={v}
-          className={`pill ${filter === v ? 'active' : ''}`}
-          onClick={() => setFilter(v)}
-        >
-          {t}
-        </button>
-      ))}
-    </div>
+      {/* แสดงรายการการ์ดงานของแถบที่กำลังเลือก */}
+      {currentList.length > 0 ? (
+        <div className="assignment-grid" key={activeTab}>
+          {currentList.map(post => {
+            const dueDate = post.dueDate;
+            const isDueSoon = dueDate && (dueDate - now > 0) && (dueDate - now < 86400000 * 2);
 
-    <div className="work-grid">
-      {sortedPosts.map(p => {
-        const isAssignment = p.kind === 'assignment';
-        const dueDate = p.dueAt ? new Date(p.dueAt) : null;
-        const isOverdue = dueDate && dueDate < new Date();
-        const memberCount = Math.max(1, (p.members || []).filter(m => m.role === 'student').length);
+            return (
+              <article className="assignment-card" key={`${post.courseId}-${post.id}`}>
+                <div className="assignment-card-top">
+                  <span className="work-course-tag" style={{marginBottom: 0}}>
+                    <BookOpen size={12}/>
+                    <span>{post.course?.name || 'รายวิชา'}</span>
+                  </span>
 
-        return (
-          <article className="work-card" key={`${p.courseId}-${p.id}`}>
-            {p.course?.name && (
-              <div className="work-course-tag">
-                <BookOpen size={12}/>
-                <span>{p.course.name}</span>
-              </div>
-            )}
-            <div className="section-title">
-              <span className={`work-icon ${p.kind}`}><ClipboardList size={23}/></span>
-              <div style={{display: 'flex', gap: '6px', alignItems: 'center'}}>
-                {isAssignment && isOverdue && !p.mine && !p.isTeacher && (
-                  <Badge tone="orange">เลยกำหนด</Badge>
-                )}
-                <Badge tone={p.kind === 'material' ? '' : 'orange'}>
-                  {p.kind === 'material' ? 'เนื้อหา' : 'งานที่มอบหมาย'}
-                </Badge>
-              </div>
-            </div>
-            <h3>{p.title}</h3>
-            <p>{p.description}</p>
-            {p.dueAt && (
-              <div className={`muted icon-label ${isOverdue ? 'overdue-label' : ''}`}>
-                <Clock size={14}/>
-                <strong>กำหนดส่ง {date(p.dueAt)}</strong>
-              </div>
-            )}
-            {isAssignment && (
-              <>
-                <div className="progress-bar">
-                  <span style={{
-                    width: `${p.isTeacher
-                      ? (p.submittedCount / memberCount) * 100
-                      : p.mine
-                        ? 100
-                        : 0}%`
-                  }}/>
+                  {activeTab === 'pending' && (
+                    isDueSoon ? (
+                      <Badge tone="orange"><Clock size={11}/> ใกล้ถึงกำหนด</Badge>
+                    ) : (
+                      <Badge tone="gray"><Clock size={11}/> ยังไม่ส่ง</Badge>
+                    )
+                  )}
+
+                  {activeTab === 'overdue' && (
+                    <Badge tone="orange"><AlertCircle size={11}/> เลยกำหนดส่ง</Badge>
+                  )}
+
+                  {activeTab === 'submitted' && (
+                    post.mine?.late ? (
+                      <Badge tone="orange"><CheckCircle2 size={11}/> ส่งช้า</Badge>
+                    ) : (
+                      <Badge><CheckCircle2 size={11}/> ส่งแล้ว</Badge>
+                    )
+                  )}
                 </div>
-                <small className="muted">
-                  {p.isTeacher
-                    ? `ส่งแล้ว ${p.submittedCount} คน · ให้คะแนน ${p.gradedCount} คน`
-                    : p.gradeInfo
-                      ? `ตรวจแล้ว ได้ ${p.gradeInfo.score} / ${p.maxScore} คะแนน`
-                      : p.mine
-                        ? `ส่งแล้ว${p.mine.late ? ' (ส่งช้า)' : ''}`
-                        : 'ยังไม่ส่งงาน'}
-                </small>
-              </>
-            )}
-            <div className="work-actions">
-              <button className="text-btn" onClick={() => open(p, p.courseId)}>
-                ดูรายละเอียด<ArrowUpRight size={15}/>
-              </button>
-              {p.isTeacher && isAssignment && (
-                <Btn secondary onClick={() => grade(p, p.courseId)}>ตรวจงาน</Btn>
-              )}
-            </div>
-          </article>
-        );
-      })}
+
+                <h3>{post.title}</h3>
+                {post.description && (
+                  <p className="assignment-desc">{post.description}</p>
+                )}
+
+                <div className="assignment-meta-list">
+                  <div className={`assignment-meta-item ${post.isOverdue && activeTab !== 'submitted' ? 'overdue' : ''}`}>
+                    <CalendarDays size={14}/>
+                    <span>
+                      {post.dueAt ? `กำหนดส่ง: ${date(post.dueAt)}` : 'ไม่มีกำหนดส่ง'}
+                    </span>
+                  </div>
+                  <div className="assignment-meta-item">
+                    <ClipboardList size={14}/>
+                    <span>คะแนนเต็ม: {post.maxScore || 100} คะแนน</span>
+                  </div>
+                  {activeTab === 'submitted' && post.mine && (
+                    <div className="assignment-meta-item success">
+                      <CheckCircle2 size={14}/>
+                      <span>ส่งเมื่อ: {date(post.mine.submittedAt || post.mine.createdAt)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {activeTab === 'submitted' && (
+                  post.gradeInfo != null ? (
+                    <div className="graded-result-box">
+                      <strong>ผลการตรวจ: ได้ {post.gradeInfo.score} / {post.maxScore} คะแนน</strong>
+                      {post.gradeInfo.feedback && (
+                        <p style={{margin: '4px 0 0', fontSize: '11px', color: '#39785e'}}>
+                          ความเห็นครู: {post.gradeInfo.feedback}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="pending-grade-box">
+                      <span className="muted">
+                        รอผู้สอนตรวจให้คะแนน · แนบแล้ว {post.mine?.files?.length || 0} ไฟล์
+                      </span>
+                    </div>
+                  )
+                )}
+
+                {post.isTeacher && (
+                  <div style={{marginBottom: '14px'}}>
+                    <div className="progress-bar" style={{margin: '8px 0 6px'}}>
+                      <span style={{width: `${(post.submittedCount / post.memberCount) * 100}%`}}/>
+                    </div>
+                    <small className="muted">
+                      ส่งแล้ว {post.submittedCount} คน · ตรวจแล้ว {post.gradedCount} คน
+                    </small>
+                  </div>
+                )}
+
+                <div className="assignment-actions">
+                  <button className="text-btn" onClick={() => open(post, post.courseId)}>
+                    {activeTab === 'submitted' ? 'ดูงานที่ส่ง' : 'ดูรายละเอียด'}
+                    <ArrowUpRight size={14}/>
+                  </button>
+
+                  {post.isTeacher ? (
+                    <Btn secondary onClick={() => grade(post, post.courseId)}>
+                      ตรวจงาน ({post.submittedCount})
+                    </Btn>
+                  ) : (
+                    <Btn
+                      secondary={activeTab === 'submitted'}
+                      onClick={() => open(post, post.courseId)}
+                    >
+                      {activeTab === 'submitted'
+                        ? 'แก้ไขงานที่ส่ง'
+                        : activeTab === 'overdue'
+                          ? 'ส่งงานย้อนหลัง'
+                          : 'ส่งงาน'}
+                    </Btn>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="empty-assignments">
+          {activeTab === 'pending' && (
+            <>
+              <CheckCircle2 size={42} className="icon-success"/>
+              <div className="empty-text">
+                <h3>ไม่มีงานที่ค้างส่ง</h3>
+                <p>คุณส่งงานที่มอบหมายครบทั้งหมดแล้ว หรือยังไม่มีงานใหม่ในขณะนี้</p>
+              </div>
+            </>
+          )}
+          {activeTab === 'overdue' && (
+            <>
+              <CheckCircle2 size={42} className="icon-success"/>
+              <div className="empty-text">
+                <h3>ไม่มีงานที่เลยกำหนดส่ง</h3>
+                <p>ยอดเยี่ยมมาก! ไม่มีงานค้างส่งที่เกินกำหนดเวลา</p>
+              </div>
+            </>
+          )}
+          {activeTab === 'submitted' && (
+            <>
+              <Clock size={42} className="icon-muted"/>
+              <div className="empty-text">
+                <h3>ยังไม่มีงานที่ส่งแล้ว</h3>
+                <p>เมื่องานถูกส่งแล้ว ข้อมูลและผลคะแนนจะปรากฏในแถบนี้</p>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
-    {!sortedPosts.length && <Empty>ยังไม่มีงานหรือเนื้อหาประเภทนี้</Empty>}
-  </>;
+  );
 }
 export function Timeline({state, profile, open}) {
   const teacher = profile.id === state.course.ownerId, posts = state.posts.filter(p => p.kind === 'assignment').sort((a, b) => a.dueAt.localeCompare(b.dueAt));
