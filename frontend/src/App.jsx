@@ -1,5 +1,5 @@
 import {useEffect, useState, useMemo, useRef} from 'react';
-import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, ChevronDown, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X, Bell, Check, Upload, CheckCircle2} from 'lucide-react';
+import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, ChevronDown, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X, Bell, Check, Upload, CheckCircle2, Search} from 'lucide-react';
 import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode, signOut} from './api';
 import {Avatar, Badge, Btn, Empty, date} from './ui';
 import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading, RoleModal} from './forms';
@@ -218,6 +218,127 @@ function NotificationBell({homeStates = [], profile, teacher, onOpenPost, onGrad
               <div className="notif-empty">
                 <Bell size={32}/>
                 <p>ยังไม่มีการแจ้งเตือนในขณะนี้</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CourseSearch({courses = [], onSelectCourse}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return courses.filter(c => {
+      const name = (c.name || '').toLowerCase();
+      const teacher = (c.teacherName || '').toLowerCase();
+      const subject = (c.subject || '').toLowerCase();
+      return name.includes(q) || teacher.includes(q) || subject.includes(q);
+    });
+  }, [query, courses]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [open]);
+
+  const handleSelect = (courseId) => {
+    onSelectCourse(courseId);
+    setOpen(false);
+    setQuery('');
+  };
+
+  return (
+    <div className="top-search-wrapper" ref={ref}>
+      <div className={`top-search-bar ${open && query.trim() ? 'focused' : ''}`}>
+        <Search size={15} className="top-search-icon"/>
+        <input
+          type="text"
+          placeholder="ค้นหาวิชา หรืออาจารย์…"
+          value={query}
+          onChange={e => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => {
+            if (query.trim()) setOpen(true);
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && results.length > 0) {
+              handleSelect(results[0].id);
+            } else if (e.key === 'Escape') {
+              setOpen(false);
+            }
+          }}
+          aria-label="ค้นหารายวิชาและอาจารย์"
+        />
+        {query && (
+          <button
+            type="button"
+            className="top-search-clear"
+            aria-label="ล้างคำค้นหา"
+            onClick={() => {
+              setQuery('');
+              setOpen(false);
+            }}
+          >
+            <X size={13}/>
+          </button>
+        )}
+      </div>
+
+      {open && query.trim() && (
+        <div className="top-search-dropdown">
+          <div className="top-search-header">
+            <span>ผลการค้นหา ({results.length})</span>
+          </div>
+
+          <div className="top-search-list">
+            {results.length > 0 ? (
+              results.map(course => (
+                <div
+                  key={course.id}
+                  className="top-search-item"
+                  onClick={() => handleSelect(course.id)}
+                >
+                  <div className="search-item-icon">
+                    <BookOpen size={16}/>
+                  </div>
+                  <div className="search-item-info">
+                    <strong className="search-item-title">{course.name}</strong>
+                    <div className="search-item-meta">
+                      {course.teacherName && (
+                        <span className="search-item-teacher">
+                          <Users size={12}/> อาจารย์ {course.teacherName}
+                        </span>
+                      )}
+                      {course.subject && (
+                        <span className="search-item-subject">
+                          {course.subject}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight size={14} className="search-item-arrow"/>
+                </div>
+              ))
+            ) : (
+              <div className="top-search-empty">
+                <Search size={22}/>
+                <p>ไม่พบรายวิชาหรืออาจารย์ที่ตรงกับ <strong>"{query}"</strong></p>
               </div>
             )}
           </div>
@@ -480,7 +601,7 @@ export default function App() {
       </aside>
       <main className="main-content">
         {isLocal && <div className="local-banner"><span/>โหมดสาธิตในเครื่อง · ข้อมูลตัวอย่าง · ยังไม่ deploy ระบบใหม่บน AWS</div>}
-        <header className="topbar"><div className="breadcrumb">{!cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><NotificationBell homeStates={homeStates} profile={profile} teacher={teacher} onOpenPost={handleOpenPost} onGradeAssessment={handleGradeAssessment}/><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
+        <header className="topbar"><div className="breadcrumb">{!cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><CourseSearch courses={boot?.courses || []} onSelectCourse={openClass}/><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><NotificationBell homeStates={homeStates} profile={profile} teacher={teacher} onOpenPost={handleOpenPost} onGradeAssessment={handleGradeAssessment}/><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
         <div className="page-content">
           <div key={cid ? `${cid}-${tab}` : tab} className="tab-pane">
             {tab === 'home' ? (
