@@ -143,6 +143,30 @@ class Classroom:
             ('67050020', 'วรเมธ วิริยพาณิชย์', 'student-020', 'student20@example.test', 'student1234'),
         ]
         classrooms = self.get_all_classrooms()
+        if not classrooms:
+            teacher = None
+            if self.directory:
+                teacher = next((u for u in self.directory.list_users() if u.get('role') == 'teacher'), None)
+                if not teacher:
+                    try:
+                        teacher = self.directory.create_user('teacher@example.test', 'อ.ณัฐวดี ศรีวิชา', 'teacher1234', 'teacher')
+                    except Exception:
+                        teacher = {'id': 'teacher-demo', 'name': 'อ.ณัฐวดี ศรีวิชา', 'email': 'teacher@example.test', 'role': 'teacher'}
+            tid = (teacher or {}).get('sub') or (teacher or {}).get('id') or 'teacher-demo'
+            teacher_user = {'id': tid, 'name': (teacher or {}).get('name', 'อ.ณัฐวดี ศรีวิชา'), 'email': (teacher or {}).get('email', 'teacher@example.test'), 'role': 'teacher'}
+            self.db.put('U#' + tid, 'PROFILE', {'role': 'teacher', 'name': teacher_user['name'], 'roleSelected': True})
+            course1 = self.run(teacher_user, 'createClass', {
+                'name': 'Cloud Computing & Virtualization',
+                'subject': '05506258 · ภาคเรียน 2/2569',
+                'description': 'สร้างสิ่งที่เป็นไปได้ ด้วยพลังของคลาวด์'
+            })
+            course2 = self.run(teacher_user, 'createClass', {
+                'name': 'Web Application Development',
+                'subject': '05506259 · ภาคเรียน 2/2569',
+                'description': 'พัฒนาเว็บแอปพลิเคชันยุคใหม่ด้วย React, Node.js และ Cloud'
+            })
+            classrooms = [course1, course2]
+
         scores_curve = [95, 92, 88, 85, 83, 80, 78, 77, 74, 71, 68, 65, 64, 61, 58, 57, 54, 49, 45, 42]
 
         for idx, (std_id, name, uid, email, pwd) in enumerate(students_spec):
@@ -170,11 +194,9 @@ class Classroom:
 
             for c in classrooms:
                 cid = c['id']
-                existing_m = self.db.list('C#' + cid, 'MEMBER#')
-                if not any(m['userId'] == actual_uid for m in existing_m):
-                    self.db.put('C#' + cid, 'STUDENT#' + std_id, {'userId': actual_uid})
-                    self.db.put('C#' + cid, 'MEMBER#' + actual_uid, {**profile, 'entity': 'member', 'userId': actual_uid})
-                    self.db.put('U#' + actual_uid, 'CLASS#' + cid, {'classId': cid})
+                self.db.put('C#' + cid, 'STUDENT#' + std_id, {'userId': actual_uid})
+                self.db.put('C#' + cid, 'MEMBER#' + actual_uid, {**profile, 'entity': 'member', 'userId': actual_uid})
+                self.db.put('U#' + actual_uid, 'CLASS#' + cid, {'classId': cid})
 
                 # Check submissions and grades
                 posts = self.db.list('C#' + cid, 'POST#')
@@ -205,7 +227,7 @@ class Classroom:
                         gb['updatedAt'] = now()
                         self.db.put('C#' + cid, 'GRADE#' + a['id'], gb)
 
-        return {'success': True, 'count': len(students_spec), 'classroomsCount': len(classrooms)}
+        return {'success': True, 'count': len(students_spec), 'classroomsCount': len(classrooms), 'classroomNames': [c.get('name') for c in classrooms]}
 
     def profile(self, user):
         prior = self.db.get('U#' + user['id'], 'PROFILE') or {}

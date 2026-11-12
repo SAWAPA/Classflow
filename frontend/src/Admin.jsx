@@ -25,9 +25,11 @@ export default function AdminPanel({profile, logout, notify}) {
   }
   async function createBatch20() {
     setBusy(true);
+    notify('กำลังดำเนินการสร้างและดึงนักเรียน 20 คนเข้าห้องเรียน กรุณารอสักครู่…');
     try {
       const res = await rpc('adminBatchCreateStudents', {});
-      notify(`สร้างนักเรียน ${res.count || 20} คนและดึงเข้าทุกห้องเรียนเรียบร้อยแล้ว!`);
+      const cnames = res.classroomNames?.length ? ` (ห้อง: ${res.classroomNames.join(', ')})` : '';
+      notify(`สร้างนักเรียน ${res.count || 20} คน และดึงเข้าทุกห้องเรียนเรียบร้อยแล้ว!${cnames}`);
       await load();
     } catch (error) {notify(error.message);} finally {setBusy(false);}
   }
