@@ -1,5 +1,5 @@
 import {useEffect, useState, useMemo, useRef} from 'react';
-import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, ChevronDown, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X, Bell, Check, Upload, CheckCircle2, Search, Megaphone, Paperclip, Download} from 'lucide-react';
+import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, ChevronDown, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X, Bell, Check, Upload, CheckCircle2, Search, Megaphone, Paperclip, Download, Clock} from 'lucide-react';
 import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode, signOut, openFile} from './api';
 import {Avatar, Badge, Btn, Empty, date} from './ui';
 import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading, RoleModal} from './forms';
@@ -235,7 +235,7 @@ function CourseSearch({courses = [], homeStates = [], state = null, cid = '', on
 
   // รวบรวมข้อมูลทุกห้องเรียนจาก homeStates และ state ปัจจุบัน
   const allStates = useMemo(() => {
-    const list = [...(homeStates || [])];
+    const list = [...(homeStates || [])].filter(Boolean);
     if (state?.course?.id) {
       const idx = list.findIndex(s => s?.course?.id === state.course.id);
       if (idx >= 0) {
@@ -251,13 +251,15 @@ function CourseSearch({courses = [], homeStates = [], state = null, cid = '', on
   const allAssignments = useMemo(() => {
     const list = [];
     allStates.forEach(s => {
-      const course = s.course || courses.find(c => c.id === s.course?.id) || {id: s.courseId, name: 'ห้องเรียน'};
+      if (!s) return;
+      const course = s.course || courses.find(c => c?.id === s?.course?.id) || {id: s?.courseId || s?.id, name: 'ห้องเรียน'};
       (s.posts || []).forEach(p => {
+        if (!p) return;
         if (p.kind === 'assignment') {
           list.push({
             ...p,
             course,
-            courseId: course.id
+            courseId: course.id || s?.course?.id
           });
         }
       });
@@ -269,13 +271,15 @@ function CourseSearch({courses = [], homeStates = [], state = null, cid = '', on
   const allMaterials = useMemo(() => {
     const list = [];
     allStates.forEach(s => {
-      const course = s.course || courses.find(c => c.id === s.course?.id) || {id: s.courseId, name: 'ห้องเรียน'};
+      if (!s) return;
+      const course = s.course || courses.find(c => c?.id === s?.course?.id) || {id: s?.courseId || s?.id, name: 'ห้องเรียน'};
       (s.posts || []).forEach(p => {
+        if (!p) return;
         if (p.kind === 'material') {
           list.push({
             ...p,
             course,
-            courseId: course.id
+            courseId: course.id || s?.course?.id
           });
         }
       });
@@ -287,12 +291,14 @@ function CourseSearch({courses = [], homeStates = [], state = null, cid = '', on
   const allFiles = useMemo(() => {
     const fileMap = new Map();
     allStates.forEach(s => {
-      const course = s.course || courses.find(c => c.id === s.course?.id) || {id: s.courseId, name: 'ห้องเรียน'};
+      if (!s) return;
+      const course = s.course || courses.find(c => c?.id === s?.course?.id) || {id: s?.courseId || s?.id, name: 'ห้องเรียน'};
       // ไฟล์แนบในโพสต์ (ทั้งงานและประกาศ)
       (s.posts || []).forEach(post => {
+        if (!post) return;
         (post.files || []).forEach(file => {
           if (!file || !file.id) return;
-          const key = `${course.id}-${file.id}`;
+          const key = `${course.id || 'c'}-${file.id}`;
           if (!fileMap.has(key)) {
             fileMap.set(key, {
               id: file.id,
@@ -300,20 +306,21 @@ function CourseSearch({courses = [], homeStates = [], state = null, cid = '', on
               size: file.size,
               post,
               course,
-              courseId: course.id,
+              courseId: course.id || s?.course?.id,
               sourceType: post.kind === 'assignment' ? 'assignment' : 'material',
-              sourceTitle: post.title
+              sourceTitle: post.title || 'โพสต์'
             });
           }
         });
       });
       // ไฟล์ที่ส่งในงาน (Submissions)
       (s.submissions || []).forEach(sub => {
-        const post = (s.posts || []).find(p => p.id === sub.postId);
-        const student = (s.members || []).find(m => m.userId === sub.userId);
+        if (!sub) return;
+        const post = (s.posts || []).find(p => p?.id === sub.postId);
+        const student = (s.members || []).find(m => m?.userId === sub.userId);
         (sub.files || []).forEach(file => {
           if (!file || !file.id) return;
-          const key = `${course.id}-${file.id}`;
+          const key = `${course.id || 'c'}-${file.id}`;
           if (!fileMap.has(key)) {
             fileMap.set(key, {
               id: file.id,
@@ -323,7 +330,7 @@ function CourseSearch({courses = [], homeStates = [], state = null, cid = '', on
               sub,
               studentName: student?.name,
               course,
-              courseId: course.id,
+              courseId: course.id || s?.course?.id,
               sourceType: 'submission',
               sourceTitle: post ? `งานส่ง: ${post.title}` : 'งานส่ง'
             });
