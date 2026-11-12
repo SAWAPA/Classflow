@@ -287,6 +287,7 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
                 </button>
               );
             })}
+          </div>
           <div className="work-search-box">
             <Search size={14} className="muted"/>
             <input
