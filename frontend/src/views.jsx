@@ -133,14 +133,15 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
   const [courseFilter, setCourseFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const entries = states.length ? states : (state ? [state] : []);
-  const availableCourses = courses.length
-    ? courses
-    : entries.map(e => e.course).filter(Boolean);
+  const isSingleClass = Boolean(state && state.course);
+  const entries = isSingleClass ? [state] : (states.length ? states : (state ? [state] : []));
+  const availableCourses = isSingleClass
+    ? (state.course ? [state.course] : [])
+    : (courses.length ? courses : entries.map(e => e.course).filter(Boolean));
 
   const now = new Date();
 
-  // ดึงรายการงานที่ได้รับมอบหมายทั้งหมดจากทุกห้องเรียน
+  // ดึงรายการงานที่ได้รับมอบหมายทั้งหมดจากห้องเรียนที่ระบุ (หากอยู่ในห้องเรียนเดี่ยว จะดึงเฉพาะห้องเรียนนั้น)
   const allAssignments = entries.flatMap(s => (s?.posts || [])
     .filter(p => p.kind === 'assignment')
     .map(p => {
@@ -192,10 +193,12 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
     })
   );
 
-  // กรองตามรายวิชาที่เลือก
-  const courseFiltered = courseFilter === 'all'
+  // กรองตามรายวิชาที่เลือก (หากอยู่ในหน้าห้องเรียนเดี่ยว จะยึดเฉพาะห้องเรียนนั้นเสมอ)
+  const courseFiltered = isSingleClass
     ? allAssignments
-    : allAssignments.filter(p => p.courseId === courseFilter);
+    : (courseFilter === 'all'
+        ? allAssignments
+        : allAssignments.filter(p => p.courseId === courseFilter));
 
   // กรองตามคำค้นหา (ชื่อเรื่อง, คำอธิบาย, ชื่อวิชา, ไฟล์แนบ)
   const searchedAssignments = useMemo(() => {
@@ -243,7 +246,9 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
       ? overdueList
       : submittedList;
 
-  const isGlobalTeacher = profile?.role === 'teacher';
+  const canCreate = isSingleClass
+    ? (profile?.id === state.course?.ownerId)
+    : (profile?.role === 'teacher');
 
   return (
     <div className="tab-pane">
@@ -251,18 +256,20 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
         <div>
           <h2>งานในชั้นเรียน</h2>
           <p className="muted">
-            {courseFilter === 'all'
-              ? `รวมงานทั้งหมดจากทุกรายวิชา (${allAssignments.length} งาน)`
-              : `งานในรายวิชา ${availableCourses.find(c => c.id === courseFilter)?.name || ''} (${courseFiltered.length} งาน)`}
+            {isSingleClass
+              ? `งานในรายวิชา ${state?.course?.name || ''} (${allAssignments.length} งาน)`
+              : (courseFilter === 'all'
+                  ? `รวมงานทั้งหมดจากทุกรายวิชา (${allAssignments.length} งาน)`
+                  : `งานในรายวิชา ${availableCourses.find(c => c.id === courseFilter)?.name || ''} (${courseFiltered.length} งาน)`)}
           </p>
         </div>
-        {isGlobalTeacher && (
+        {canCreate && (
           <Btn icon={Plus} onClick={create}>สร้างงาน / การบ้าน</Btn>
         )}
       </div>
 
-      {/* แถบฟิวเตอร์เลือกรายวิชา */}
-      {availableCourses.length > 0 && (
+      {/* แถบฟิวเตอร์เลือกรายวิชา (แสดงเฉพาะเมื่อดูภาพรวมทุกห้องเรียนและมีมากกว่า 1 ห้องเรียน) */}
+      {!isSingleClass && availableCourses.length > 1 ? (
         <div className="work-filter-bar">
           <div className="filter-title">
             <Filter size={15}/>
@@ -293,6 +300,24 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
             <input
               type="text"
               placeholder="ค้นหางาน หรือไฟล์แนบ…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              aria-label="ค้นหางานในชั้นเรียน"
+            />
+            {searchQuery && (
+              <button type="button" className="stream-search-clear" onClick={() => setSearchQuery('')}>
+                <X size={12}/>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="work-filter-bar" style={{justifyContent: 'flex-end'}}>
+          <div className="work-search-box" style={{maxWidth: '320px', width: '100%'}}>
+            <Search size={14} className="muted"/>
+            <input
+              type="text"
+              placeholder="ค้นหางานในวิชานี้ หรือไฟล์แนบ…"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               aria-label="ค้นหางานในชั้นเรียน"
