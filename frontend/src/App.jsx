@@ -8,7 +8,7 @@ import {Stream, Work, Timeline, Messages} from './views';
 import Dashboard from './Dashboard';
 import HomeDashboard from './HomeDashboard';
 const labels = {home: 'หน้าหลัก', stream: 'หน้าชั้นเรียน', work: 'งานในชั้นเรียน', dashboard: 'คะแนนและเกรด', people: 'สมาชิก', messages: 'ข้อความ', timeline: 'กำหนดส่งงาน'};
-const navigation = [[Home, 'home'], [BookOpen, 'stream'], [ClipboardList, 'work'], [LayoutDashboard, 'dashboard'], [Users, 'people'], [MessageCircle, 'messages'], [CalendarDays, 'timeline']];
+const navigation = [[Home, 'home'], [ClipboardList, 'work'], [LayoutDashboard, 'dashboard'], [Users, 'people'], [MessageCircle, 'messages'], [CalendarDays, 'timeline']];
 
 function timeAgo(dateString) {
   if (!dateString) return '';
