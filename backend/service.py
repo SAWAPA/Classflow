@@ -43,6 +43,47 @@ class Classroom:
         if user.get('role') != 'admin' or self.directory is None:
             raise PermissionError('เฉพาะผู้ดูแลระบบเท่านั้น')
 
+    def get_all_classrooms(self):
+        classes = []
+        try:
+            join_links = self.db.list('JOIN', '')
+            seen = set()
+            for link in join_links:
+                cid = link.get('classId')
+                if cid and cid not in seen:
+                    seen.add(cid)
+                    c = self.db.get('C#' + cid, 'META')
+                    if c:
+                        classes.append(c)
+        except Exception:
+            pass
+
+        if not classes and hasattr(self.db, 'connect'):
+            with self.db.connect() as conn:
+                rows = conn.execute("SELECT pk, data FROM records WHERE sk = 'META' AND pk LIKE 'C#%'").fetchall()
+                for pk, raw in rows:
+                    cid = pk.removeprefix('C#')
+                    try:
+                        classes.append({'id': cid, **json.loads(raw)})
+                    except Exception:
+                        pass
+        return classes
+
+    def enroll_student_in_all_classes(self, uid, profile):
+        classrooms = self.get_all_classrooms()
+        enrolled = []
+        for c in classrooms:
+            cid = c['id']
+            sid = profile.get('studentId', '')
+            existing = self.db.list('C#' + cid, 'MEMBER#')
+            if not any(m['userId'] == uid for m in existing):
+                if sid:
+                    self.db.put('C#' + cid, 'STUDENT#' + sid, {'userId': uid})
+                self.db.put('C#' + cid, 'MEMBER#' + uid, {**profile, 'entity': 'member', 'userId': uid})
+                self.db.put('U#' + uid, 'CLASS#' + cid, {'classId': cid})
+                enrolled.append(cid)
+        return enrolled
+
     def admin_create_user(self, user, data):
         self.admin_only(user)
         email = text(data.get('email'), 254)
@@ -55,7 +96,116 @@ class Classroom:
         role = data.get('role', 'student')
         if role not in ('admin', 'teacher', 'student'):
             raise ValueError('กำหนดยศได้เฉพาะผู้ดูแลระบบ ครู หรือนักเรียน')
-        return self.directory.create_user(email, name, password, role)
+        created = self.directory.create_user(email, name, password, role)
+
+        uid = created.get('sub') or created.get('id') or email
+        sid = text(data.get('studentId'), 32, False) or ''
+        if role == 'student' and not sid:
+            sid = f"6705{secrets.randbelow(9000) + 1000}"
+
+        profile = {
+            'id': uid,
+            'name': name,
+            'email': email,
+            'role': role,
+            'roleSelected': True,
+            'studentId': sid
+        }
+        self.db.put('U#' + uid, 'PROFILE', profile)
+
+        if role == 'student' and data.get('enrollAllClasses', True):
+            self.enroll_student_in_all_classes(uid, profile)
+
+        return created
+
+    def admin_batch_create_students(self, user, data=None):
+        self.admin_only(user)
+        students_spec = [
+            ('67050001', 'กานต์ธีรา แสงจันทร์', 'student-001', 'student1@example.test', 'student1234'),
+            ('67050002', 'ธนกร ใจดี', 'student-002', 'student2@example.test', 'student1234'),
+            ('67050003', 'ปวีณา พรหมมา', 'student-003', 'student3@example.test', 'student1234'),
+            ('67050004', 'ภูริณัฐ วงศ์ทอง', 'student-004', 'student4@example.test', 'student1234'),
+            ('67050005', 'ศศิธร เมฆขาว', 'student-005', 'student5@example.test', 'student1234'),
+            ('67050006', 'ณัฐดนัย เกียรติสุข', 'student-006', 'student6@example.test', 'student1234'),
+            ('67050007', 'อริสรา มั่นคง', 'student-007', 'student7@example.test', 'student1234'),
+            ('67050008', 'กิตติพงศ์ อินทร์แก้ว', 'student-008', 'student8@example.test', 'student1234'),
+            ('67050009', 'ชนิกานต์ สุวรรณรัตน์', 'student-009', 'student9@example.test', 'student1234'),
+            ('67050010', 'ธนภัทร รัตนวิชัย', 'student-010', 'student10@example.test', 'student1234'),
+            ('67050011', 'เบญญาภา รุ่งเรือง', 'student-011', 'student11@example.test', 'student1234'),
+            ('67050012', 'ภัทรพล เจริญกุล', 'student-012', 'student12@example.test', 'student1234'),
+            ('67050013', 'วริศรา ศรีสุวรรณ', 'student-013', 'student13@example.test', 'student1234'),
+            ('67050014', 'สหรัฐ โชคชัย', 'student-014', 'student14@example.test', 'student1234'),
+            ('67050015', 'อธิปัตย์ พงษ์สวัสดิ์', 'student-015', 'student15@example.test', 'student1234'),
+            ('67050016', 'จิรภัทร ชัยวัฒนา', 'student-016', 'student16@example.test', 'student1234'),
+            ('67050017', 'ธนัชชา วงศ์สวัสดิ์', 'student-017', 'student17@example.test', 'student1234'),
+            ('67050018', 'พิมพ์พิชชา สุทธิกุล', 'student-018', 'student18@example.test', 'student1234'),
+            ('67050019', 'รัชพล ทวีทรัพย์', 'student-019', 'student19@example.test', 'student1234'),
+            ('67050020', 'วรเมธ วิริยพาณิชย์', 'student-020', 'student20@example.test', 'student1234'),
+        ]
+        classrooms = self.get_all_classrooms()
+        scores_curve = [95, 92, 88, 85, 83, 80, 78, 77, 74, 71, 68, 65, 64, 61, 58, 57, 54, 49, 45, 42]
+
+        for idx, (std_id, name, uid, email, pwd) in enumerate(students_spec):
+            actual_uid = uid
+            try:
+                created = self.directory.create_user(email, name, pwd, 'student')
+                actual_uid = created.get('sub') or created.get('id') or uid
+            except Exception:
+                if hasattr(self.directory, 'resolve_user'):
+                    try:
+                        u = self.directory.resolve_user(email)
+                        actual_uid = u.get('sub') or u.get('id') or uid
+                    except Exception:
+                        pass
+
+            profile = {
+                'id': actual_uid,
+                'name': name,
+                'email': email,
+                'role': 'student',
+                'roleSelected': True,
+                'studentId': std_id,
+            }
+            self.db.put('U#' + actual_uid, 'PROFILE', profile)
+
+            for c in classrooms:
+                cid = c['id']
+                existing_m = self.db.list('C#' + cid, 'MEMBER#')
+                if not any(m['userId'] == actual_uid for m in existing_m):
+                    self.db.put('C#' + cid, 'STUDENT#' + std_id, {'userId': actual_uid})
+                    self.db.put('C#' + cid, 'MEMBER#' + actual_uid, {**profile, 'entity': 'member', 'userId': actual_uid})
+                    self.db.put('U#' + actual_uid, 'CLASS#' + cid, {'classId': cid})
+
+                # Check submissions and grades
+                posts = self.db.list('C#' + cid, 'POST#')
+                assignments = [p for p in posts if p.get('kind') == 'assignment']
+                for a in assignments:
+                    sub_key = f"SUB#{a['id']}#{actual_uid}"
+                    if not self.db.get('C#' + cid, sub_key):
+                        score = scores_curve[idx % len(scores_curve)]
+                        self.db.put('C#' + cid, sub_key, {
+                            'entity': 'submission',
+                            'postId': a['id'],
+                            'userId': actual_uid,
+                            'files': [],
+                            'comment': f'งานส่งโดย {name}',
+                            'submittedAt': now(),
+                            'late': idx >= 17,
+                            'revision': 1
+                        })
+                        gb = self.db.get('C#' + cid, 'GRADE#' + a['id']) or {'entity': 'gradebook', 'assessmentId': a['id'], 'scores': {}}
+                        scores = gb.get('scores', {})
+                        scores[actual_uid] = {
+                            'score': score,
+                            'rubricScores': {},
+                            'feedback': 'ตรวจแล้วเรียบร้อย' if score >= 80 else 'ตรวจแล้ว',
+                            'gradedAt': now()
+                        }
+                        gb['scores'] = scores
+                        gb['updatedAt'] = now()
+                        self.db.put('C#' + cid, 'GRADE#' + a['id'], gb)
+
+        return {'success': True, 'count': len(students_spec), 'classroomsCount': len(classrooms)}
 
     def profile(self, user):
         prior = self.db.get('U#' + user['id'], 'PROFILE') or {}
@@ -144,6 +294,8 @@ class Classroom:
             return self.directory.list_users()
         if action == 'adminCreateUser':
             return self.admin_create_user(user, data)
+        if action == 'adminBatchCreateStudents':
+            return self.admin_batch_create_students(user, data)
         if action == 'adminSetUserRole':
             self.admin_only(user)
             target = text(data.get('userId'), 254)

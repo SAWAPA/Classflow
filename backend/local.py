@@ -39,31 +39,50 @@ STUDENTS_20 = [
 ]
 
 USERS = [
-    {'id': 'teacher-demo', 'name': 'อ.ณัฐวดี ศรีวิชา', 'email': 'teacher@example.test', 'password': 'teacher1234', 'role': 'teacher'},
-    {'id': 'newbie-demo', 'name': 'ผู้ใช้ใหม่ (เพิ่งลงทะเบียน)', 'email': 'newbie@example.test', 'password': 'student1234', 'role': 'student'},
-    {'id': 'admin-demo', 'name': 'ผู้ดูแลระบบ', 'email': 'admin@example.test', 'password': 'admin1234', 'role': 'admin'},
+    {'id': 'teacher-demo', 'name': 'อ.ณัฐวดี ศรีวิชา', 'email': 'teacher@example.test', 'role': 'teacher'},
+    {'id': 'newbie-demo', 'name': 'ผู้ใช้ใหม่ (เพิ่งลงทะเบียน)', 'email': 'newbie@example.test', 'role': 'student'},
+    {'id': 'admin-demo', 'name': 'ผู้ดูแลระบบ', 'email': 'admin@example.test', 'role': 'admin'},
 ] + [
-    {'id': uid, 'name': name, 'email': email, 'studentId': sid, 'password': 'student1234', 'role': 'student'}
-    for sid, name, uid, email in STUDENTS_20
+    {'id': uid, 'name': name, 'email': email, 'role': 'student'}
+    for _, name, uid, email in STUDENTS_20
 ]
 
 
 class LocalDirectory:
+    def __init__(self, store=None):
+        self.db = store
+
+    def get_all_users(self):
+        persisted = []
+        if self.db:
+            persisted = self.db.list('LOCAL_USER#', '')
+        all_users = list(USERS)
+        for p in persisted:
+            if not any(u['id'] == p['id'] or u['email'].lower() == p['email'].lower() for u in all_users):
+                all_users.append(p)
+        return all_users
+
     def list_users(self):
-        return [{'id': u['id'], 'name': u['name'], 'email': u['email'], 'role': u['role'], 'status': 'CONFIRMED', 'enabled': True} for u in USERS]
+        return [{'id': u['id'], 'name': u['name'], 'email': u['email'], 'role': u['role'], 'status': 'CONFIRMED', 'enabled': True} for u in self.get_all_users()]
 
     def create_user(self, email, name, password, role):
-        if any(u['email'].lower() == email.lower() for u in USERS):
-            raise ValueError('อีเมลนี้มีบัญชีอยู่แล้ว')
+        all_users = self.get_all_users()
+        existing = next((u for u in all_users if u['email'].lower() == email.lower()), None)
+        if existing:
+            return {**existing, 'status': 'CONFIRMED', 'enabled': True}
         user = {'id': 'local-' + secrets.token_hex(6), 'name': name, 'email': email, 'password': password, 'role': role}
         USERS.append(user)
+        if self.db:
+            self.db.put('LOCAL_USER#' + user['id'], 'META', user)
         return {**user, 'status': 'CONFIRMED', 'enabled': True}
 
     def set_role(self, user_id, role):
-        user = next((u for u in USERS if u['id'] == user_id), None)
+        user = next((u for u in self.get_all_users() if u['id'] == user_id or u['email'] == user_id), None)
         if not user or user['role'] == 'admin':
             raise ValueError('ไม่พบผู้ใช้หรือไม่อนุญาตให้เปลี่ยนยศผู้ดูแล')
         user['role'] = role
+        if self.db:
+            self.db.put('LOCAL_USER#' + user['id'], 'META', user)
         return {**user, 'status': 'CONFIRMED', 'enabled': True}
 
 
@@ -89,7 +108,7 @@ class LocalFiles:
 
 files = LocalFiles()
 db = LocalStore(DATA / 'classroom.sqlite3')
-app = Classroom(db, files, LocalDirectory())
+app = Classroom(db, files, LocalDirectory(db))
 
 
 def seed():
@@ -237,8 +256,9 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(length)) if length > 0 else {}
                 login_id = (body.get('email') or body.get('username') or '').strip().lower()
                 pwd = str(body.get('password') or '').strip()
+                users = app.directory.get_all_users() if hasattr(app.directory, 'get_all_users') else USERS
                 user = None
-                for u in USERS:
+                for u in users:
                     if (u.get('email', '').strip().lower() == login_id or
                         u.get('id', '').strip().lower() == login_id or
                         u.get('studentId', '').strip().lower() == login_id):
@@ -272,7 +292,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path != '/rpc':
                 return self.respond(404, {'error': 'Not found'})
             token = self.headers.get('Authorization', '').replace('Bearer dev:', '')
-            user = next((u for u in USERS if u['id'] == token), None)
+            users = app.directory.get_all_users() if hasattr(app.directory, 'get_all_users') else USERS
+            user = next((u for u in users if u['id'] == token), None)
             if not user:
                 raise PermissionError('เลือกบัญชีสาธิตก่อนใช้งาน')
             length = int(self.headers.get('Content-Length', 0))
