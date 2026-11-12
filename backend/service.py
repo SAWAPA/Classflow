@@ -419,7 +419,7 @@ class Classroom:
             self.access(user, cid, True)
             exam = {'entity': 'exam', 'id': ident(), 'title': text(data.get('title'), 120), 'maxScore': numeric(data.get('maxScore'), 1, 1000), 'createdAt': now()}
             return self.db.put(pk, 'EXAM#' + exam['id'], exam, expected=0)
-        if action in ('grade', 'importScores'):
+        if action in ('grade', 'importScores', 'randomScores'):
             self.access(user, cid, True)
             aid = text(data.get('assessmentId'), 64)
             assessment = self.db.get(pk, 'POST#' + aid) or self.db.get(pk, 'EXAM#' + aid)
@@ -429,7 +429,12 @@ class Classroom:
             if data.get('expectedVersion') != gradebook['_version']:
                 raise ValueError('สมุดคะแนนเปลี่ยนแล้ว กรุณารีเฟรชก่อนบันทึก')
             roster = {m['userId']: m for m in self.db.list(pk, 'MEMBER#') if m['role'] == 'student'}
-            updates = data.get('rows') if action == 'importScores' else [data]
+            if action == 'randomScores':
+                if assessment.get('rubric'):
+                    raise ValueError('งานที่มี Rubric ต้องให้คะแนนแยกหัวข้อ')
+                updates = [{'userId': uid, 'score': round(assessment['maxScore'] * (0.5 + secrets.randbelow(5001) / 10000), 1)} for uid in roster]
+            else:
+                updates = data.get('rows') if action == 'importScores' else [data]
             if not isinstance(updates, list) or not 1 <= len(updates) <= 500:
                 raise ValueError('นำเข้าได้ 1–500 แถวต่อครั้ง')
             seen = set()
