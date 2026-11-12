@@ -30,9 +30,8 @@ export default function Dashboard({state, profile, refresh, notify, grade}) {
     if (!assessment || assessment.rubric?.length) return notify('รายการที่มี Rubric ต้องให้คะแนนรายคน');
     if (!students.length) return notify('ยังไม่มีนักเรียนในห้องนี้');
     if (!window.confirm(`สุ่มคะแนน ${students.length} คนสำหรับ “${assessment.title}” และเขียนทับคะแนนเดิมหรือไม่?`)) return;
-    const rows = students.map(student => ({studentId: student.studentId, score: Math.round(assessment.maxScore * (0.5 + Math.random() * 0.5) * 10) / 10}));
     setBusy(true);
-    try {await rpc('importScores', {classId: state.course.id, assessmentId: assessment.id, rows, expectedVersion: state.gradebookVersions[assessment.id] || 0}); await refresh(); notify(`สุ่มและบันทึกคะแนน ${rows.length} คนแล้ว`);} catch (error) {notify(error.message);} finally {setBusy(false);}
+    try {const result = await rpc('randomScores', {classId: state.course.id, assessmentId: assessment.id, expectedVersion: state.gradebookVersions[assessment.id] || 0}); await refresh(); notify(`สุ่มและบันทึกคะแนน ${result.updated} คนแล้ว`);} catch (error) {notify(error.message);} finally {setBusy(false);}
   }
   async function saveBulkGrading() {
     if (!assessment || assessment.rubric?.length) return notify('รายการที่มี Rubric ต้องให้คะแนนรายคน');
