@@ -28,13 +28,26 @@ export default function App() {
     catch (error) {notify(error.message);}
     finally {setHomeLoading(false);}
   }
-  function goHome() {setCid(''); setState(null); setTab('home'); setHomeRefreshKey(key => key + 1);}
+  function goHome() {
+    if (tab === 'home' && !cid) return;
+    setCid('');
+    setTab('home');
+  }
   function openClass(classId, nextTab = 'stream', postId = null) {
-    setCid(classId);
-    setLastCid(classId);
-    setState(null);
+    const targetCourseId = classId || lastCid || boot?.courses?.[0]?.id;
+    if (!targetCourseId) {
+      notify('คุณยังไม่มีห้องเรียน กรุณาสร้างหรือเข้าร่วมห้องเรียนก่อน');
+      return;
+    }
+    setCid(targetCourseId);
+    setLastCid(targetCourseId);
     setTab(nextTab);
     if (postId) setDetail({id: postId});
+    setState(current => {
+      if (current?.course?.id === targetCourseId) return current;
+      const cached = homeStates.find(s => s?.course?.id === targetCourseId);
+      return cached || current || null;
+    });
   }
   function handleNav(id) {
     if (id === 'home') {
@@ -46,7 +59,7 @@ export default function App() {
       notify('คุณยังไม่มีห้องเรียน กรุณาสร้างหรือเข้าร่วมห้องเรียนก่อน');
       return;
     }
-    if (!cid) {
+    if (!cid || cid !== targetId) {
       openClass(targetId, id);
     } else {
       setTab(id);
@@ -54,7 +67,17 @@ export default function App() {
   }
   useEffect(() => {if (session) bootstrap().catch(e => notify(e.message));}, [session]);
   useEffect(() => {if (boot && boot.profile?.role !== 'admin') loadHome();}, [boot?.profile?.id, boot?.courses, homeRefreshKey]);
-  useEffect(() => {if (!cid) return; let stale = false; setLoading(true); setState(null); rpc('getClass', {classId: cid}).then(r => {if (!stale) setState(r);}).catch(e => notify(e.message)).finally(() => {if (!stale) setLoading(false);}); return () => {stale = true;};}, [cid]);
+  useEffect(() => {
+    if (!cid) return;
+    let stale = false;
+    const hasCached = state?.course?.id === cid || homeStates.some(s => s?.course?.id === cid);
+    if (!hasCached) setLoading(true);
+    rpc('getClass', {classId: cid})
+      .then(r => {if (!stale) setState(r);})
+      .catch(e => notify(e.message))
+      .finally(() => {if (!stale) setLoading(false);});
+    return () => {stale = true;};
+  }, [cid]);
   useEffect(() => {window.addEventListener('classflow-signed-out', logout); return () => window.removeEventListener('classflow-signed-out', logout);}, []);
   useEffect(() => {if (!toast) return; const timer = setTimeout(() => setToast(''), 8000); return () => clearTimeout(timer);}, [toast]);
   useEffect(() => {
@@ -104,17 +127,19 @@ export default function App() {
         {isLocal && <div className="local-banner"><span/>โหมดสาธิตในเครื่อง · ข้อมูลตัวอย่าง · ยังไม่ deploy ระบบใหม่บน AWS</div>}
         <header className="topbar"><div className="breadcrumb">{!cid || tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
         <div className="page-content">
-          {tab === 'home' || !cid ? <HomeDashboard courses={boot?.courses || []} states={homeStates} profile={profile} teacher={teacher} onOpen={openClass} onRefresh={loadHome} loading={homeLoading}/> : loading ? <Empty icon={RefreshCw}>กำลังโหลดห้องเรียน…</Empty> : !state ? <div className="welcome-empty"><GraduationCap size={55}/><h1>เริ่มต้นพื้นที่เรียนรู้ของคุณ</h1><p className="muted">{teacher ? 'สร้างห้องเรียนแรก แล้วเชิญนักเรียนเข้ามาร่วมเรียนรู้' : 'ตั้งค่าโปรไฟล์ แล้วใช้รหัสห้องเรียนจากอาจารย์เพื่อเข้าร่วม'}</p><div className="button-group"><Btn icon={Plus} onClick={() => setModal('class')}>{teacher ? 'สร้างห้องเรียน' : 'เข้าร่วมห้องเรียน'}</Btn><Btn secondary onClick={() => setModal('profile')}>ตั้งค่าโปรไฟล์</Btn></div></div> : <>
-            <section className={'course-hero ' + (tab !== 'stream' ? 'compact' : '')}><div className="hero-copy"><div className="hero-meta"><span>CLASSROOM / {state.course.subject}</span><Badge tone="glass">{teacher ? 'TEACHER SPACE' : 'STUDENT SPACE'}</Badge></div><h1>{state.course.name}</h1><p>{state.course.description || 'พื้นที่เรียนรู้และเติบโตไปด้วยกัน'}</p><div className="hero-footer"><Avatar name={state.course.teacherName} small/><span>{state.course.teacherName}</span><i/>ภาคเรียนของเรา</div></div><div className="hero-art"><div className="art-ring"/><div className="floating-book"><BookOpen size={55}/></div><div className="floating-star">✳</div><div className="little-card"><CheckMark/><span>Learning, in flow.</span></div></div></section>
-            {tab === 'stream' && <div className="overview-row">{[[ClipboardList, 'งานที่มอบหมาย', state.posts.filter(p => p.kind === 'assignment').length, 'ชิ้น'], [Users, teacher ? 'นักเรียนในห้อง' : 'ห้องเรียนของฉัน', teacher ? state.members.filter(m => m.role === 'student').length : boot.courses.length, teacher ? 'คน' : 'ห้อง'], [FileText, 'เนื้อหาการเรียน', state.posts.filter(p => p.kind === 'material').length, 'โพสต์']].map(([Icon, label, count, unit]) => <div key={label}><span className="overview-icon"><Icon size={21}/></span><div><small>{label}</small><strong>{count}<span>{unit}</span></strong></div><ArrowUpRight size={16}/></div>)}</div>}
-            <div className="content-tabs">{['stream', 'work', 'dashboard', 'people', 'messages', 'timeline'].map(id => <button className={tab === id ? 'active' : ''} key={id} onClick={() => setTab(id)}>{labels[id]}</button>)}{teacher && <button className="quick-create" onClick={() => setModal('post')}><Plus size={16}/> สร้างโพสต์</button>}</div>
-            {tab === 'stream' && <Stream state={state} profile={profile} open={setDetail} create={() => setModal('post')}/>}
-            {tab === 'work' && <Work state={state} profile={profile} open={setDetail} grade={setGrading} create={() => setModal('post')}/>}
-            {tab === 'dashboard' && <Dashboard key={cid} state={state} profile={profile} refresh={refresh} notify={notify} grade={setGrading}/>}
-            {tab === 'people' && <section className="panel"><div className="section-title"><h2>{teacher ? 'ทุกคนในห้องเรียน' : 'อาจารย์และโปรไฟล์ของฉัน'}</h2><Badge>{state.members.length} คน</Badge></div>{state.members.map(m => <div className="person-row" key={m.userId}><Avatar name={m.name}/><div><strong>{m.name}</strong><small>{m.studentId || m.email}</small></div><Badge tone={m.role === 'teacher' ? '' : 'gray'}>{m.role === 'teacher' ? 'อาจารย์' : 'นักเรียน'}</Badge></div>)}</section>}
-            {tab === 'messages' && <Messages key={cid} state={state} profile={profile} notify={notify}/>}
-            {tab === 'timeline' && <Timeline state={state} profile={profile} open={setDetail}/>}
-          </>}
+          <div key={cid ? `${cid}-${tab}` : tab} className="tab-pane">
+            {tab === 'home' || !cid ? <HomeDashboard courses={boot?.courses || []} states={homeStates} profile={profile} teacher={teacher} onOpen={openClass} onRefresh={loadHome} loading={homeLoading}/> : loading && !state ? <Empty icon={RefreshCw}>กำลังโหลดห้องเรียน…</Empty> : !state ? <div className="welcome-empty"><GraduationCap size={55}/><h1>เริ่มต้นพื้นที่เรียนรู้ของคุณ</h1><p className="muted">{teacher ? 'สร้างห้องเรียนแรก แล้วเชิญนักเรียนเข้ามาร่วมเรียนรู้' : 'ตั้งค่าโปรไฟล์ แล้วใช้รหัสห้องเรียนจากอาจารย์เพื่อเข้าร่วม'}</p><div className="button-group"><Btn icon={Plus} onClick={() => setModal('class')}>{teacher ? 'สร้างห้องเรียน' : 'เข้าร่วมห้องเรียน'}</Btn><Btn secondary onClick={() => setModal('profile')}>ตั้งค่าโปรไฟล์</Btn></div></div> : <>
+              <section className={'course-hero ' + (tab !== 'stream' ? 'compact' : '')}><div className="hero-copy"><div className="hero-meta"><span>CLASSROOM / {state.course.subject}</span><Badge tone="glass">{teacher ? 'TEACHER SPACE' : 'STUDENT SPACE'}</Badge></div><h1>{state.course.name}</h1><p>{state.course.description || 'พื้นที่เรียนรู้และเติบโตไปด้วยกัน'}</p><div className="hero-footer"><Avatar name={state.course.teacherName} small/><span>{state.course.teacherName}</span><i/>ภาคเรียนของเรา</div></div><div className="hero-art"><div className="art-ring"/><div className="floating-book"><BookOpen size={55}/></div><div className="floating-star">✳</div><div className="little-card"><CheckMark/><span>Learning, in flow.</span></div></div></section>
+              {tab === 'stream' && <div className="overview-row">{[[ClipboardList, 'งานที่มอบหมาย', state.posts.filter(p => p.kind === 'assignment').length, 'ชิ้น'], [Users, teacher ? 'นักเรียนในห้อง' : 'ห้องเรียนของฉัน', teacher ? state.members.filter(m => m.role === 'student').length : boot.courses.length, teacher ? 'คน' : 'ห้อง'], [FileText, 'เนื้อหาการเรียน', state.posts.filter(p => p.kind === 'material').length, 'โพสต์']].map(([Icon, label, count, unit]) => <div key={label}><span className="overview-icon"><Icon size={21}/></span><div><small>{label}</small><strong>{count}<span>{unit}</span></strong></div><ArrowUpRight size={16}/></div>)}</div>}
+              <div className="content-tabs">{['stream', 'work', 'dashboard', 'people', 'messages', 'timeline'].map(id => <button className={tab === id ? 'active' : ''} key={id} onClick={() => setTab(id)}>{labels[id]}</button>)}{teacher && <button className="quick-create" onClick={() => setModal('post')}><Plus size={16}/> สร้างโพสต์</button>}</div>
+              {tab === 'stream' && <Stream state={state} profile={profile} open={setDetail} create={() => setModal('post')}/>}
+              {tab === 'work' && <Work state={state} profile={profile} open={setDetail} grade={setGrading} create={() => setModal('post')}/>}
+              {tab === 'dashboard' && <Dashboard key={cid} state={state} profile={profile} refresh={refresh} notify={notify} grade={setGrading}/>}
+              {tab === 'people' && <section className="panel"><div className="section-title"><h2>{teacher ? 'ทุกคนในห้องเรียน' : 'อาจารย์และโปรไฟล์ของฉัน'}</h2><Badge>{state.members.length} คน</Badge></div>{state.members.map(m => <div className="person-row" key={m.userId}><Avatar name={m.name}/><div><strong>{m.name}</strong><small>{m.studentId || m.email}</small></div><Badge tone={m.role === 'teacher' ? '' : 'gray'}>{m.role === 'teacher' ? 'อาจารย์' : 'นักเรียน'}</Badge></div>)}</section>}
+              {tab === 'messages' && <Messages key={cid} state={state} profile={profile} notify={notify}/>}
+              {tab === 'timeline' && <Timeline state={state} profile={profile} open={setDetail}/>}
+            </>}
+          </div>
         </div>
         <footer className="page-footer"><span>classflow. <span className="muted">A better place to learn.</span></span><span>Made for your classroom <span className="footer-dot">✳</span></span></footer>
       </main>
