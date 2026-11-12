@@ -1,6 +1,6 @@
 import {useEffect, useState, useMemo, useRef} from 'react';
-import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, ChevronDown, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X, Bell, Check, Upload, CheckCircle2, Search} from 'lucide-react';
-import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode, signOut} from './api';
+import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, ChevronDown, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X, Bell, Check, Upload, CheckCircle2, Search, Megaphone, Paperclip, Download} from 'lucide-react';
+import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode, signOut, openFile} from './api';
 import {Avatar, Badge, Btn, Empty, date} from './ui';
 import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading, RoleModal} from './forms';
 import AdminPanel from './Admin';
@@ -227,21 +227,167 @@ function NotificationBell({homeStates = [], profile, teacher, onOpenPost, onGrad
   );
 }
 
-function CourseSearch({courses = [], onSelectCourse}) {
+function CourseSearch({courses = [], homeStates = [], state = null, cid = '', onSelectCourse, onOpenPost, notify}) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState('all'); // 'all' | 'courses' | 'assignments' | 'materials' | 'files'
   const ref = useRef(null);
 
-  const results = useMemo(() => {
+  // รวบรวมข้อมูลทุกห้องเรียนจาก homeStates และ state ปัจจุบัน
+  const allStates = useMemo(() => {
+    const list = [...(homeStates || [])];
+    if (state?.course?.id) {
+      const idx = list.findIndex(s => s?.course?.id === state.course.id);
+      if (idx >= 0) {
+        list[idx] = state;
+      } else {
+        list.push(state);
+      }
+    }
+    return list;
+  }, [homeStates, state]);
+
+  // ดึงรายการงานที่มอบหมายทั้งหมด (Assignments)
+  const allAssignments = useMemo(() => {
+    const list = [];
+    allStates.forEach(s => {
+      const course = s.course || courses.find(c => c.id === s.course?.id) || {id: s.courseId, name: 'ห้องเรียน'};
+      (s.posts || []).forEach(p => {
+        if (p.kind === 'assignment') {
+          list.push({
+            ...p,
+            course,
+            courseId: course.id
+          });
+        }
+      });
+    });
+    return list;
+  }, [allStates, courses]);
+
+  // ดึงรายการประกาศและเนื้อหาทั้งหมด (Materials / Announcements)
+  const allMaterials = useMemo(() => {
+    const list = [];
+    allStates.forEach(s => {
+      const course = s.course || courses.find(c => c.id === s.course?.id) || {id: s.courseId, name: 'ห้องเรียน'};
+      (s.posts || []).forEach(p => {
+        if (p.kind === 'material') {
+          list.push({
+            ...p,
+            course,
+            courseId: course.id
+          });
+        }
+      });
+    });
+    return list;
+  }, [allStates, courses]);
+
+  // ดึงไฟล์แนบทั้งหมดจากโพสต์และงานส่งของแต่ละห้องเรียน
+  const allFiles = useMemo(() => {
+    const fileMap = new Map();
+    allStates.forEach(s => {
+      const course = s.course || courses.find(c => c.id === s.course?.id) || {id: s.courseId, name: 'ห้องเรียน'};
+      // ไฟล์แนบในโพสต์ (ทั้งงานและประกาศ)
+      (s.posts || []).forEach(post => {
+        (post.files || []).forEach(file => {
+          if (!file || !file.id) return;
+          const key = `${course.id}-${file.id}`;
+          if (!fileMap.has(key)) {
+            fileMap.set(key, {
+              id: file.id,
+              filename: file.filename || 'ไฟล์แนบ',
+              size: file.size,
+              post,
+              course,
+              courseId: course.id,
+              sourceType: post.kind === 'assignment' ? 'assignment' : 'material',
+              sourceTitle: post.title
+            });
+          }
+        });
+      });
+      // ไฟล์ที่ส่งในงาน (Submissions)
+      (s.submissions || []).forEach(sub => {
+        const post = (s.posts || []).find(p => p.id === sub.postId);
+        const student = (s.members || []).find(m => m.userId === sub.userId);
+        (sub.files || []).forEach(file => {
+          if (!file || !file.id) return;
+          const key = `${course.id}-${file.id}`;
+          if (!fileMap.has(key)) {
+            fileMap.set(key, {
+              id: file.id,
+              filename: file.filename || 'ไฟล์งานส่ง',
+              size: file.size,
+              post,
+              sub,
+              studentName: student?.name,
+              course,
+              courseId: course.id,
+              sourceType: 'submission',
+              sourceTitle: post ? `งานส่ง: ${post.title}` : 'งานส่ง'
+            });
+          }
+        });
+      });
+    });
+    return Array.from(fileMap.values());
+  }, [allStates, courses]);
+
+  // ผลการค้นหาแยกแต่ละประเภท
+  const matchedCourses = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return courses.filter(c => {
       const name = (c.name || '').toLowerCase();
       const teacher = (c.teacherName || '').toLowerCase();
       const subject = (c.subject || '').toLowerCase();
-      return name.includes(q) || teacher.includes(q) || subject.includes(q);
+      const code = (c.joinCode || c.code || '').toLowerCase();
+      return name.includes(q) || teacher.includes(q) || subject.includes(q) || code.includes(q);
     });
   }, [query, courses]);
+
+  const matchedAssignments = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return allAssignments.filter(a => {
+      const title = (a.title || '').toLowerCase();
+      const desc = (a.description || '').toLowerCase();
+      const courseName = (a.course?.name || '').toLowerCase();
+      const subject = (a.course?.subject || '').toLowerCase();
+      const author = (a.authorName || '').toLowerCase();
+      return title.includes(q) || desc.includes(q) || courseName.includes(q) || subject.includes(q) || author.includes(q);
+    });
+  }, [query, allAssignments]);
+
+  const matchedMaterials = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return allMaterials.filter(m => {
+      const title = (m.title || '').toLowerCase();
+      const desc = (m.description || '').toLowerCase();
+      const courseName = (m.course?.name || '').toLowerCase();
+      const subject = (m.course?.subject || '').toLowerCase();
+      const author = (m.authorName || '').toLowerCase();
+      return title.includes(q) || desc.includes(q) || courseName.includes(q) || subject.includes(q) || author.includes(q);
+    });
+  }, [query, allMaterials]);
+
+  const matchedFiles = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return allFiles.filter(f => {
+      const filename = (f.filename || '').toLowerCase();
+      const sourceTitle = (f.sourceTitle || '').toLowerCase();
+      const postTitle = (f.post?.title || '').toLowerCase();
+      const courseName = (f.course?.name || '').toLowerCase();
+      const subject = (f.course?.subject || '').toLowerCase();
+      const student = (f.studentName || '').toLowerCase();
+      return filename.includes(q) || sourceTitle.includes(q) || postTitle.includes(q) || courseName.includes(q) || subject.includes(q) || student.includes(q);
+    });
+  }, [query, allFiles]);
+
+  const totalCount = matchedCourses.length + matchedAssignments.length + matchedMaterials.length + matchedFiles.length;
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -255,10 +401,50 @@ function CourseSearch({courses = [], onSelectCourse}) {
     }
   }, [open]);
 
-  const handleSelect = (courseId) => {
-    onSelectCourse(courseId);
+  const handleSelectCourse = (courseId) => {
+    if (onSelectCourse) onSelectCourse(courseId);
     setOpen(false);
     setQuery('');
+  };
+
+  const handleSelectPost = (post, courseId) => {
+    if (onOpenPost) {
+      onOpenPost(post, courseId);
+    } else if (onSelectCourse) {
+      onSelectCourse(courseId);
+    }
+    setOpen(false);
+    setQuery('');
+  };
+
+  const handleOpenFile = (courseId, fileId) => {
+    openFile(courseId, fileId).catch(e => {
+      if (notify) notify(e.message);
+    });
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (tab === 'courses' && matchedCourses.length > 0) {
+        handleSelectCourse(matchedCourses[0].id);
+      } else if (tab === 'assignments' && matchedAssignments.length > 0) {
+        handleSelectPost(matchedAssignments[0], matchedAssignments[0].courseId);
+      } else if (tab === 'materials' && matchedMaterials.length > 0) {
+        handleSelectPost(matchedMaterials[0], matchedMaterials[0].courseId);
+      } else if (tab === 'files' && matchedFiles.length > 0) {
+        handleOpenFile(matchedFiles[0].courseId, matchedFiles[0].id);
+      } else if (matchedCourses.length > 0) {
+        handleSelectCourse(matchedCourses[0].id);
+      } else if (matchedAssignments.length > 0) {
+        handleSelectPost(matchedAssignments[0], matchedAssignments[0].courseId);
+      } else if (matchedMaterials.length > 0) {
+        handleSelectPost(matchedMaterials[0], matchedMaterials[0].courseId);
+      } else if (matchedFiles.length > 0) {
+        handleOpenFile(matchedFiles[0].courseId, matchedFiles[0].id);
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
   };
 
   return (
@@ -267,7 +453,7 @@ function CourseSearch({courses = [], onSelectCourse}) {
         <Search size={15} className="top-search-icon"/>
         <input
           type="text"
-          placeholder="ค้นหาวิชา หรืออาจารย์…"
+          placeholder="ค้นหาวิชา, รหัสวิชา, งาน, ประกาศ, ไฟล์…"
           value={query}
           onChange={e => {
             setQuery(e.target.value);
@@ -276,14 +462,8 @@ function CourseSearch({courses = [], onSelectCourse}) {
           onFocus={() => {
             if (query.trim()) setOpen(true);
           }}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && results.length > 0) {
-              handleSelect(results[0].id);
-            } else if (e.key === 'Escape') {
-              setOpen(false);
-            }
-          }}
-          aria-label="ค้นหารายวิชาและอาจารย์"
+          onKeyDown={handleKeyDown}
+          aria-label="ค้นหารายวิชา รหัสวิชา งาน ประกาศ และไฟล์แนบ"
         />
         {query && (
           <button
@@ -303,43 +483,270 @@ function CourseSearch({courses = [], onSelectCourse}) {
       {open && query.trim() && (
         <div className="top-search-dropdown">
           <div className="top-search-header">
-            <span>ผลการค้นหา ({results.length})</span>
+            <div className="search-header-title">
+              <span>ผลการค้นหา ({totalCount})</span>
+              {cid && <span className="search-scope-badge">ค้นหาทุกห้องเรียน</span>}
+            </div>
+            {totalCount > 0 && (
+              <div className="top-search-tabs">
+                <button
+                  type="button"
+                  className={`search-tab-pill ${tab === 'all' ? 'active' : ''}`}
+                  onClick={() => setTab('all')}
+                >
+                  ทั้งหมด ({totalCount})
+                </button>
+                {matchedCourses.length > 0 && (
+                  <button
+                    type="button"
+                    className={`search-tab-pill ${tab === 'courses' ? 'active' : ''}`}
+                    onClick={() => setTab('courses')}
+                  >
+                    ห้องเรียน ({matchedCourses.length})
+                  </button>
+                )}
+                {matchedAssignments.length > 0 && (
+                  <button
+                    type="button"
+                    className={`search-tab-pill ${tab === 'assignments' ? 'active' : ''}`}
+                    onClick={() => setTab('assignments')}
+                  >
+                    งาน ({matchedAssignments.length})
+                  </button>
+                )}
+                {matchedMaterials.length > 0 && (
+                  <button
+                    type="button"
+                    className={`search-tab-pill ${tab === 'materials' ? 'active' : ''}`}
+                    onClick={() => setTab('materials')}
+                  >
+                    ประกาศ ({matchedMaterials.length})
+                  </button>
+                )}
+                {matchedFiles.length > 0 && (
+                  <button
+                    type="button"
+                    className={`search-tab-pill ${tab === 'files' ? 'active' : ''}`}
+                    onClick={() => setTab('files')}
+                  >
+                    ไฟล์ ({matchedFiles.length})
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="top-search-list">
-            {results.length > 0 ? (
-              results.map(course => (
-                <div
-                  key={course.id}
-                  className="top-search-item"
-                  onClick={() => handleSelect(course.id)}
-                >
-                  <div className="search-item-icon">
-                    <BookOpen size={16}/>
-                  </div>
-                  <div className="search-item-info">
-                    <strong className="search-item-title">{course.name}</strong>
-                    <div className="search-item-meta">
-                      {course.teacherName && (
-                        <span className="search-item-teacher">
-                          <Users size={12}/> อาจารย์ {course.teacherName}
-                        </span>
-                      )}
-                      {course.subject && (
-                        <span className="search-item-subject">
-                          {course.subject}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <ChevronRight size={14} className="search-item-arrow"/>
-                </div>
-              ))
-            ) : (
+            {totalCount === 0 ? (
               <div className="top-search-empty">
                 <Search size={22}/>
-                <p>ไม่พบรายวิชาหรืออาจารย์ที่ตรงกับ <strong>"{query}"</strong></p>
+                <p>ไม่พบวิชา, งาน, ประกาศ หรือไฟล์ที่ตรงกับ <strong>"{query}"</strong></p>
+                <small className="muted">ลองพิมพ์ชื่อวิชา, รหัสวิชา, ชื่องาน, ประกาศ หรือชื่อไฟล์</small>
               </div>
+            ) : (
+              <>
+                {/* 1. รายวิชา / ห้องเรียน */}
+                {(tab === 'all' || tab === 'courses') && matchedCourses.length > 0 && (
+                  <div className="search-group">
+                    {tab === 'all' && (
+                      <div className="search-group-header">
+                        <BookOpen size={12}/>
+                        <span>ห้องเรียน ({matchedCourses.length})</span>
+                      </div>
+                    )}
+                    {matchedCourses.map(course => (
+                      <div
+                        key={`c-${course.id}`}
+                        className="top-search-item"
+                        onClick={() => handleSelectCourse(course.id)}
+                      >
+                        <div className="search-item-icon course">
+                          <BookOpen size={16}/>
+                        </div>
+                        <div className="search-item-info">
+                          <div className="search-item-topline">
+                            <strong className="search-item-title">{course.name}</strong>
+                            <span className="search-type-badge course">ห้องเรียน</span>
+                          </div>
+                          <div className="search-item-meta">
+                            {course.teacherName && (
+                              <span className="search-item-teacher">
+                                <Users size={12}/> อาจารย์ {course.teacherName}
+                              </span>
+                            )}
+                            {course.subject && (
+                              <span className="search-item-subject">
+                                {course.subject}
+                              </span>
+                            )}
+                            {course.joinCode && (
+                              <span className="search-item-code">
+                                รหัส: {course.joinCode}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <ChevronRight size={14} className="search-item-arrow"/>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 2. งานที่มอบหมาย (Assignments) */}
+                {(tab === 'all' || tab === 'assignments') && matchedAssignments.length > 0 && (
+                  <div className="search-group">
+                    {tab === 'all' && (
+                      <div className="search-group-header">
+                        <ClipboardList size={12}/>
+                        <span>งานที่มอบหมาย ({matchedAssignments.length})</span>
+                      </div>
+                    )}
+                    {matchedAssignments.map(a => (
+                      <div
+                        key={`a-${a.courseId}-${a.id}`}
+                        className="top-search-item"
+                        onClick={() => handleSelectPost(a, a.courseId)}
+                      >
+                        <div className="search-item-icon assignment">
+                          <ClipboardList size={16}/>
+                        </div>
+                        <div className="search-item-info">
+                          <div className="search-item-topline">
+                            <strong className="search-item-title">{a.title}</strong>
+                            <span className="search-type-badge assignment">งานที่มอบหมาย</span>
+                          </div>
+                          <div className="search-item-meta">
+                            <span className="search-item-course-tag">
+                              <BookOpen size={11}/> {a.course?.name || 'ห้องเรียน'}
+                            </span>
+                            {a.dueAt && (
+                              <span>
+                                <Clock size={11}/> ครบกำหนด {date(a.dueAt)}
+                              </span>
+                            )}
+                            {a.maxScore && <span>{a.maxScore} คะแนน</span>}
+                            {a.files?.length > 0 && (
+                              <span className="search-files-count">
+                                <Paperclip size={11}/> {a.files.length} ไฟล์
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <ChevronRight size={14} className="search-item-arrow"/>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 3. ประกาศและเนื้อหา (Materials / Announcements) */}
+                {(tab === 'all' || tab === 'materials') && matchedMaterials.length > 0 && (
+                  <div className="search-group">
+                    {tab === 'all' && (
+                      <div className="search-group-header">
+                        <Megaphone size={12}/>
+                        <span>ประกาศและเนื้อหา ({matchedMaterials.length})</span>
+                      </div>
+                    )}
+                    {matchedMaterials.map(m => (
+                      <div
+                        key={`m-${m.courseId}-${m.id}`}
+                        className="top-search-item"
+                        onClick={() => handleSelectPost(m, m.courseId)}
+                      >
+                        <div className="search-item-icon material">
+                          <Megaphone size={16}/>
+                        </div>
+                        <div className="search-item-info">
+                          <div className="search-item-topline">
+                            <strong className="search-item-title">{m.title}</strong>
+                            <span className="search-type-badge material">ประกาศ</span>
+                          </div>
+                          <div className="search-item-meta">
+                            <span className="search-item-course-tag">
+                              <BookOpen size={11}/> {m.course?.name || 'ห้องเรียน'}
+                            </span>
+                            {m.authorName && <span>โดย {m.authorName}</span>}
+                            {m.createdAt && <span>{date(m.createdAt)}</span>}
+                            {m.files?.length > 0 && (
+                              <span className="search-files-count">
+                                <Paperclip size={11}/> {m.files.length} ไฟล์
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <ChevronRight size={14} className="search-item-arrow"/>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 4. ไฟล์งานและเอกสารแนบ (Files) */}
+                {(tab === 'all' || tab === 'files') && matchedFiles.length > 0 && (
+                  <div className="search-group">
+                    {tab === 'all' && (
+                      <div className="search-group-header">
+                        <FileText size={12}/>
+                        <span>ไฟล์งานและเอกสารแนบ ({matchedFiles.length})</span>
+                      </div>
+                    )}
+                    {matchedFiles.map(f => (
+                      <div
+                        key={`f-${f.courseId}-${f.id}`}
+                        className="top-search-item file-item"
+                        onClick={() => handleOpenFile(f.courseId, f.id)}
+                      >
+                        <div className="search-item-icon file">
+                          <FileText size={16}/>
+                        </div>
+                        <div className="search-item-info">
+                          <div className="search-item-topline">
+                            <strong className="search-item-title">{f.filename}</strong>
+                            <span className={`search-type-badge ${f.sourceType === 'submission' ? 'sub-file' : 'file'}`}>
+                              {f.sourceType === 'submission' ? 'ไฟล์งานส่ง' : 'ไฟล์แนบ'}
+                            </span>
+                          </div>
+                          <div className="search-item-meta">
+                            <span className="search-item-course-tag">
+                              <BookOpen size={11}/> {f.course?.name || 'ห้องเรียน'}
+                            </span>
+                            {f.sourceTitle && <span>จาก: {f.sourceTitle}</span>}
+                            {f.studentName && <span>ผู้ส่ง: {f.studentName}</span>}
+                            {f.size && <span>({(f.size / 1024).toFixed(0)} KB)</span>}
+                          </div>
+                        </div>
+                        <div className="search-item-actions">
+                          {f.post && (
+                            <button
+                              type="button"
+                              className="search-item-action-btn"
+                              title="เปิดดูโพสต์ของไฟล์นี้"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectPost(f.post, f.courseId);
+                              }}
+                            >
+                              <ArrowUpRight size={13}/>
+                              <span>ดูโพสต์</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="search-item-action-btn download"
+                            title="ดาวน์โหลดหรือเปิดไฟล์"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenFile(f.courseId, f.id);
+                            }}
+                          >
+                            <Download size={13}/>
+                            <span>ดาวน์โหลด</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -601,7 +1008,7 @@ export default function App() {
       </aside>
       <main className="main-content">
         {isLocal && <div className="local-banner"><span/>โหมดสาธิตในเครื่อง · ข้อมูลตัวอย่าง · ยังไม่ deploy ระบบใหม่บน AWS</div>}
-        <header className="topbar"><div className="breadcrumb">{!cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><CourseSearch courses={boot?.courses || []} onSelectCourse={openClass}/><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><NotificationBell homeStates={homeStates} profile={profile} teacher={teacher} onOpenPost={handleOpenPost} onGradeAssessment={handleGradeAssessment}/><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
+        <header className="topbar"><div className="breadcrumb">{!cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><CourseSearch courses={boot?.courses || []} homeStates={homeStates} state={state} cid={cid} onSelectCourse={openClass} onOpenPost={handleOpenPost} notify={notify}/><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><NotificationBell homeStates={homeStates} profile={profile} teacher={teacher} onOpenPost={handleOpenPost} onGradeAssessment={handleGradeAssessment}/><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
         <div className="page-content">
           <div key={cid ? `${cid}-${tab}` : tab} className="tab-pane">
             {tab === 'home' ? (

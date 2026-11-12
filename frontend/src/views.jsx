@@ -1,15 +1,137 @@
-import {useEffect, useState} from 'react';
-import {BookOpen, ClipboardList, CalendarDays, Clock, Sparkles, ArrowUpRight, ChevronRight, Plus, MessageCircle, Paperclip, RefreshCw, Send, AlertCircle, CheckCircle2, Filter} from 'lucide-react';
+import {useEffect, useState, useMemo} from 'react';
+import {BookOpen, ClipboardList, CalendarDays, Clock, Sparkles, ArrowUpRight, ChevronRight, Plus, MessageCircle, Paperclip, RefreshCw, Send, AlertCircle, CheckCircle2, Filter, Search, X, Megaphone, FileText} from 'lucide-react';
 import {rpc} from './api';
 import {Avatar, Badge, Btn, Empty, date} from './ui';
 
 export function Stream({state, profile, open, create}) {
   const teacher = profile.id === state.course.ownerId, assignments = state.posts.filter(p => p.kind === 'assignment');
-  return <div className="two-column"><section><button className="composer" onClick={teacher ? create : undefined}><Avatar name={profile.name}/><span>{teacher ? 'วันนี้อยากแบ่งปันอะไรกับชั้นเรียน?' : 'พร้อมเรียนรู้สิ่งใหม่ไปด้วยกัน'}</span>{teacher && <Plus size={20}/>}</button><div className="section-title"><h2>เรื่องราวในชั้นเรียน <span className="muted small-text">{state.posts.length} โพสต์</span></h2><span className="eyebrow">LATEST UPDATES</span></div>{state.posts.map(post => <article className="post-card" key={post.id}><div className="post-author"><div className={`post-symbol ${post.kind}`}>{post.kind === 'assignment' ? <ClipboardList size={21}/> : <BookOpen size={21}/>}</div><div><strong>{post.authorName}</strong><small>{date(post.createdAt)}</small></div><Badge tone={post.kind === 'assignment' ? 'orange' : ''}>{post.kind === 'assignment' ? 'มอบหมายงาน' : 'เนื้อหา'}</Badge></div><button className="post-open" onClick={() => open(post)}><h3>{post.title}</h3><p>{post.description}</p>{post.kind === 'assignment' && <div className="post-due"><Clock size={14}/><span>กำหนดส่ง {date(post.dueAt)}</span><strong>{post.maxScore} คะแนน</strong></div>}<span className="post-link">{post.kind === 'assignment' ? 'ดูงานและรายละเอียด' : 'อ่านเนื้อหาและความคิดเห็น'}<ArrowUpRight size={16}/></span></button><div className="post-bottom"><MessageCircle size={15}/>{state.comments.filter(c => c.postId === post.id).length} ความคิดเห็น{post.files.length > 0 && <span><Paperclip size={14}/> {post.files.length} ไฟล์แนบ</span>}</div></article>)}{!state.posts.length && <Empty>ยังไม่มีโพสต์ในห้องเรียนนี้</Empty>}</section><aside><div className="side-card"><div className="section-title"><h3>กำลังจะถึง</h3><CalendarDays size={18}/></div>{assignments.filter(p => new Date(p.dueAt) >= new Date()).sort((a, b) => a.dueAt.localeCompare(b.dueAt)).slice(0, 4).map(p => <button className="upcoming" key={p.id} onClick={() => open(p)}><div className="date-tile"><strong>{new Date(p.dueAt).getDate()}</strong><small>{new Date(p.dueAt).toLocaleDateString('th-TH', {month: 'short'})}</small></div><div><strong>{p.title}</strong><small>{date(p.dueAt)}</small></div><ChevronRight size={15}/></button>)}{!assignments.some(p => new Date(p.dueAt) >= new Date()) && <p className="muted">ยังไม่มีกำหนดส่งงานถัดไป</p>}</div><div className="tip-card"><Sparkles size={23}/><h3>ทุกความก้าวหน้า<br/>มีความหมาย</h3><p>ค่อย ๆ เรียนรู้ ลงมือทำ และถามเมื่อสงสัย ห้องเรียนนี้พร้อมเติบโตไปกับคุณ</p><div className="tip-line"/></div>{teacher && <div className="side-card"><small className="eyebrow">INVITE YOUR CLASS</small><h3>รหัสเข้าห้องเรียน</h3><div className="join-code">{state.course.joinCode}</div><p className="muted">ส่งรหัสนี้ให้นักเรียนเข้าร่วม</p></div>}</aside></div>;
+  const [filterType, setFilterType] = useState('all'); // 'all' | 'assignment' | 'material' | 'files'
+  const [search, setSearch] = useState('');
+
+  const filteredPosts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (state?.posts || []).filter(post => {
+      if (filterType === 'assignment' && post.kind !== 'assignment') return false;
+      if (filterType === 'material' && post.kind !== 'material') return false;
+      if (filterType === 'files' && (!post.files || post.files.length === 0)) return false;
+      if (!q) return true;
+      const title = (post.title || '').toLowerCase();
+      const desc = (post.description || '').toLowerCase();
+      const author = (post.authorName || '').toLowerCase();
+      const filesMatch = (post.files || []).some(f => (f.filename || '').toLowerCase().includes(q));
+      return title.includes(q) || desc.includes(q) || author.includes(q) || filesMatch;
+    });
+  }, [state?.posts, filterType, search]);
+
+  return <div className="two-column"><section>
+    <button className="composer" onClick={teacher ? create : undefined}>
+      <Avatar name={profile.name}/>
+      <span>{teacher ? 'วันนี้อยากแบ่งปันอะไรกับชั้นเรียน?' : 'พร้อมเรียนรู้สิ่งใหม่ไปด้วยกัน'}</span>
+      {teacher && <Plus size={20}/>}
+    </button>
+    <div className="section-title">
+      <h2>เรื่องราวในชั้นเรียน <span className="muted small-text">{state.posts.length} โพสต์</span></h2>
+      <span className="eyebrow">LATEST UPDATES</span>
+    </div>
+
+    {/* แถบค้นหาและกรองประกาศ งาน และไฟล์ในห้องเรียนนี้ */}
+    <div className="stream-search-bar">
+      <div className="stream-search-input">
+        <Search size={14} className="muted"/>
+        <input
+          type="text"
+          placeholder="ค้นหาประกาศ, งาน หรือไฟล์ในห้องนี้…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          aria-label="ค้นหาในห้องเรียนนี้"
+        />
+        {search && (
+          <button type="button" className="stream-search-clear" onClick={() => setSearch('')}>
+            <X size={12}/>
+          </button>
+        )}
+      </div>
+      <div className="stream-filter-pills">
+        <button
+          type="button"
+          className={`stream-pill ${filterType === 'all' ? 'active' : ''}`}
+          onClick={() => setFilterType('all')}
+        >
+          ทั้งหมด ({state.posts.length})
+        </button>
+        <button
+          type="button"
+          className={`stream-pill ${filterType === 'assignment' ? 'active' : ''}`}
+          onClick={() => setFilterType('assignment')}
+        >
+          <ClipboardList size={12}/> งาน ({assignments.length})
+        </button>
+        <button
+          type="button"
+          className={`stream-pill ${filterType === 'material' ? 'active' : ''}`}
+          onClick={() => setFilterType('material')}
+        >
+          <Megaphone size={12}/> ประกาศ ({state.posts.filter(p => p.kind === 'material').length})
+        </button>
+        <button
+          type="button"
+          className={`stream-pill ${filterType === 'files' ? 'active' : ''}`}
+          onClick={() => setFilterType('files')}
+        >
+          <Paperclip size={12}/> มีไฟล์แนบ ({state.posts.filter(p => p.files?.length > 0).length})
+        </button>
+      </div>
+    </div>
+
+    {filteredPosts.map(post => (
+      <article className="post-card" key={post.id}>
+        <div className="post-author">
+          <div className={`post-symbol ${post.kind}`}>
+            {post.kind === 'assignment' ? <ClipboardList size={21}/> : <BookOpen size={21}/>}
+          </div>
+          <div>
+            <strong>{post.authorName}</strong>
+            <small>{date(post.createdAt)}</small>
+          </div>
+          <Badge tone={post.kind === 'assignment' ? 'orange' : ''}>
+            {post.kind === 'assignment' ? 'มอบหมายงาน' : 'เนื้อหา'}
+          </Badge>
+        </div>
+        <button className="post-open" onClick={() => open(post)}>
+          <h3>{post.title}</h3>
+          <p>{post.description}</p>
+          {post.kind === 'assignment' && (
+            <div className="post-due">
+              <Clock size={14}/>
+              <span>กำหนดส่ง {date(post.dueAt)}</span>
+              <strong>{post.maxScore} คะแนน</strong>
+            </div>
+          )}
+          <span className="post-link">
+            {post.kind === 'assignment' ? 'ดูงานและรายละเอียด' : 'อ่านเนื้อหาและความคิดเห็น'}
+            <ArrowUpRight size={16}/>
+          </span>
+        </button>
+        <div className="post-bottom">
+          <MessageCircle size={15}/>
+          {state.comments.filter(c => c.postId === post.id).length} ความคิดเห็น
+          {post.files.length > 0 && (
+            <span><Paperclip size={14}/> {post.files.length} ไฟล์แนบ</span>
+          )}
+        </div>
+      </article>
+    ))}
+    {!filteredPosts.length && (
+      <Empty>
+        {search || filterType !== 'all' ? 'ไม่พบประกาศ งาน หรือไฟล์ที่ตรงกับคำค้นหา' : 'ยังไม่มีโพสต์ในห้องเรียนนี้'}
+      </Empty>
+    )}
+  </section><aside><div className="side-card"><div className="section-title"><h3>กำลังจะถึง</h3><CalendarDays size={18}/></div>{assignments.filter(p => new Date(p.dueAt) >= new Date()).sort((a, b) => a.dueAt.localeCompare(b.dueAt)).slice(0, 4).map(p => <button className="upcoming" key={p.id} onClick={() => open(p)}><div className="date-tile"><strong>{new Date(p.dueAt).getDate()}</strong><small>{new Date(p.dueAt).toLocaleDateString('th-TH', {month: 'short'})}</small></div><div><strong>{p.title}</strong><small>{date(p.dueAt)}</small></div><ChevronRight size={15}/></button>)}{!assignments.some(p => new Date(p.dueAt) >= new Date()) && <p className="muted">ยังไม่มีกำหนดส่งงานถัดไป</p>}</div><div className="tip-card"><Sparkles size={23}/><h3>ทุกความก้าวหน้า<br/>มีความหมาย</h3><p>ค่อย ๆ เรียนรู้ ลงมือทำ และถามเมื่อสงสัย ห้องเรียนนี้พร้อมเติบโตไปกับคุณ</p><div className="tip-line"/></div>{teacher && <div className="side-card"><small className="eyebrow">INVITE YOUR CLASS</small><h3>รหัสเข้าห้องเรียน</h3><div className="join-code">{state.course.joinCode}</div><p className="muted">ส่งรหัสนี้ให้นักเรียนเข้าร่วม</p></div>}</aside></div>;
 }
 export function Work({state, states = [], courses = [], profile, open, grade, create}) {
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'overdue' | 'submitted'
   const [courseFilter, setCourseFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const entries = states.length ? states : (state ? [state] : []);
   const availableCourses = courses.length
@@ -75,8 +197,23 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
     ? allAssignments
     : allAssignments.filter(p => p.courseId === courseFilter);
 
+  // กรองตามคำค้นหา (ชื่อเรื่อง, คำอธิบาย, ชื่อวิชา, ไฟล์แนบ)
+  const searchedAssignments = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return courseFiltered;
+    return courseFiltered.filter(p => {
+      const title = (p.title || '').toLowerCase();
+      const desc = (p.description || '').toLowerCase();
+      const courseName = (p.course?.name || '').toLowerCase();
+      const subject = (p.course?.subject || '').toLowerCase();
+      const filesMatch = (p.files || []).some(f => (f.filename || '').toLowerCase().includes(q)) ||
+                         (p.mine?.files || []).some(f => (f.filename || '').toLowerCase().includes(q));
+      return title.includes(q) || desc.includes(q) || courseName.includes(q) || subject.includes(q) || filesMatch;
+    });
+  }, [courseFiltered, searchQuery]);
+
   // แยกรายการ 3 แถบออกจากกันโดยสิ้นเชิง พร้อมเรียงตามกำหนดส่ง
-  const pendingList = courseFiltered
+  const pendingList = searchedAssignments
     .filter(p => p.category === 'pending')
     .sort((a, b) => {
       if (a.dueAt && b.dueAt) return new Date(a.dueAt) - new Date(b.dueAt);
@@ -85,14 +222,14 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
       return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
     });
 
-  const overdueList = courseFiltered
+  const overdueList = searchedAssignments
     .filter(p => p.category === 'overdue')
     .sort((a, b) => {
       if (a.dueAt && b.dueAt) return new Date(a.dueAt) - new Date(b.dueAt);
       return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
     });
 
-  const submittedList = courseFiltered
+  const submittedList = searchedAssignments
     .filter(p => p.category === 'submitted')
     .sort((a, b) => {
       const aTime = new Date(a.mine?.submittedAt || a.mine?.createdAt || a.createdAt || 0).getTime();
@@ -150,6 +287,20 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
                 </button>
               );
             })}
+          <div className="work-search-box">
+            <Search size={14} className="muted"/>
+            <input
+              type="text"
+              placeholder="ค้นหางาน หรือไฟล์แนบ…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              aria-label="ค้นหางานในชั้นเรียน"
+            />
+            {searchQuery && (
+              <button type="button" className="stream-search-clear" onClick={() => setSearchQuery('')}>
+                <X size={12}/>
+              </button>
+            )}
           </div>
         </div>
       )}
