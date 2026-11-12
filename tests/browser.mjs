@@ -24,6 +24,14 @@ const context = await browser.newContext({viewport: {width: 1440, height: 1050},
 const page = await context.newPage(); const errors = []; page.on('pageerror', e => errors.push(e.message));
 await page.goto(`http://127.0.0.1:${testPort}/`);
 await page.getByRole('button', {name: 'อาจารย์ ดูชั้นเรียน'}).click();
+if (await page.getByRole('dialog').count()) {
+  await page.getByRole('button', {name: /อาจารย์ \/ ผู้สอน/}).click();
+  await page.getByRole('button', {name: 'ยืนยันและเริ่มต้นใช้งาน'}).click();
+}
+await page.getByRole('heading', {name: /ยินดีต้อนรับ/}).waitFor();
+await page.getByRole('heading', {name: 'ห้องเรียนของฉัน'}).waitFor();
+await page.getByRole('heading', {name: 'ประกาศล่าสุด'}).waitFor();
+await page.getByRole('button', {name: /เปิดห้องเรียน Cloud Computing & Virtualization/}).click();
 await page.getByRole('heading', {name: 'Cloud Computing & Virtualization'}).waitFor();
 await page.screenshot({path: path.join(out, 'teacher-stream.png'), fullPage: true, animations:'disabled'});
 await page.getByRole('button', {name: 'คะแนนและเกรด', exact: true}).last().click();
@@ -51,6 +59,14 @@ await page.getByRole('button',{name:'ปิดตัวอย่างนำเ�
 // Separate tab identity, genuine backend isolation: students get only their own grades.
 const studentContext=await browser.newContext({viewport:{width:390,height:844}}); const student=await studentContext.newPage(); student.on('pageerror',e=>errors.push(e.message));
 await student.goto(`http://127.0.0.1:${testPort}/`); await student.getByRole('button',{name:/นักเรียน · กานต์ธีรา/}).click();
+if (await student.getByRole('dialog').count()) {
+  await student.getByRole('button', {name: /นักเรียน \/ ผู้เรียน/}).click();
+  await student.getByRole('button', {name: 'ยืนยันและเริ่มต้นใช้งาน'}).click();
+}
+await student.getByRole('heading', {name: /ยินดีต้อนรับ/}).waitFor();
+await student.getByRole('heading', {name: 'การบ้านที่ยังไม่ส่ง'}).waitFor();
+await student.getByRole('heading', {name: 'ประกาศล่าสุด'}).waitFor();
+await student.getByRole('button', {name: /เปิดห้องเรียน Cloud Computing & Virtualization/}).click();
 await student.getByRole('heading',{name:'Cloud Computing & Virtualization'}).waitFor();
 await student.screenshot({path:path.join(out,'student-mobile.png'),fullPage:true});
 await student.getByRole('button',{name:'คะแนนและเกรด',exact:true}).last().click();
