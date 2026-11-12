@@ -1019,7 +1019,7 @@ export default function App() {
         <div className="page-content">
           <div key={cid ? `${cid}-${tab}` : tab} className="tab-pane">
             {tab === 'home' ? (
-              <HomeDashboard courses={boot?.courses || []} states={homeStates} profile={profile} teacher={teacher} onOpen={openClass} onRefresh={loadHome} loading={homeLoading}/>
+              <HomeDashboard courses={boot?.courses || []} states={homeStates} profile={profile} teacher={teacher} onOpen={openClass}/>
             ) : tab === 'work' && !cid ? (
               <Work state={null} states={homeStates} courses={boot?.courses || []} profile={profile} open={handleOpenPost} grade={handleGradeAssessment} create={() => setModal('post')}/>
             ) : loading && !state ? (
