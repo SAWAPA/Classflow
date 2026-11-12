@@ -1,7 +1,7 @@
-import {useEffect, useState} from 'react';
-import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X} from 'lucide-react';
+import {useEffect, useState, useMemo, useRef} from 'react';
+import {BookOpen, Home, LayoutDashboard, ClipboardList, MessageCircle, Users, CalendarDays, Plus, ArrowUpRight, ChevronRight, LogOut, GraduationCap, FileText, Layers, Settings, RefreshCw, AlertCircle, X, Bell, Check, Upload, CheckCircle2} from 'lucide-react';
 import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode, signOut} from './api';
-import {Avatar, Badge, Btn, Empty} from './ui';
+import {Avatar, Badge, Btn, Empty, date} from './ui';
 import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading, RoleModal} from './forms';
 import AdminPanel from './Admin';
 import {Stream, Work, Timeline, Messages} from './views';
@@ -10,6 +10,223 @@ import HomeDashboard from './HomeDashboard';
 const labels = {home: 'หน้าหลัก', stream: 'หน้าชั้นเรียน', work: 'งานในชั้นเรียน', dashboard: 'คะแนนและเกรด', people: 'สมาชิก', messages: 'ข้อความ', timeline: 'กำหนดส่งงาน'};
 const navigation = [[Home, 'home'], [BookOpen, 'stream'], [ClipboardList, 'work'], [LayoutDashboard, 'dashboard'], [Users, 'people'], [MessageCircle, 'messages'], [CalendarDays, 'timeline']];
 
+function timeAgo(dateString) {
+  if (!dateString) return '';
+  const diffSec = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+  if (diffSec < 60) return 'เมื่อสักครู่';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} นาทีที่แล้ว`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} ชม. ที่แล้ว`;
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay === 1) return 'เมื่อวานนี้';
+  if (diffDay < 7) return `${diffDay} วันที่แล้ว`;
+  return new Date(dateString).toLocaleDateString('th-TH', {day: 'numeric', month: 'short'});
+}
+
+function NotificationBell({homeStates = [], profile, teacher, onOpenPost, onGradeAssessment}) {
+  const [open, setOpen] = useState(false);
+  const storageKey = `classflow_read_notis_${profile?.id || 'guest'}`;
+
+  const [readIds, setReadIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(storageKey) || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const notifications = useMemo(() => {
+    if (!profile || !homeStates.length) return [];
+    const list = [];
+    const isTeacher = teacher || profile?.role === 'teacher';
+
+    homeStates.forEach(s => {
+      if (!s?.course) return;
+      const course = s.course;
+      const isOwner = profile.id === course.ownerId;
+
+      // สำหรับอาจารย์: แสดงว่านักเรียนคนไหนส่งงานมาแล้วบ้าง ในทุกห้องเรียนที่รับผิดชอบ
+      if (isOwner || isTeacher) {
+        (s.submissions || []).forEach(sub => {
+          const student = (s.members || []).find(m => m.userId === sub.userId);
+          const studentName = student?.name || (sub.userId === profile.id ? profile.name : 'นักเรียน');
+          const studentCode = student?.studentId ? ` (${student.studentId})` : '';
+          const post = (s.posts || []).find(p => p.id === sub.postId);
+
+          list.push({
+            id: `sub-${course.id}-${sub.postId}-${sub.userId}-${sub.submittedAt || sub.createdAt}`,
+            type: 'submission',
+            title: `${studentName}${studentCode} ส่งงานแล้ว`,
+            description: `ส่งงาน "${post?.title || 'งานที่มอบหมาย'}" ในวิชา ${course.name}${sub.late ? ' (ส่งช้า)' : ''}`,
+            courseId: course.id,
+            courseName: course.name,
+            timestamp: sub.submittedAt || sub.createdAt,
+            post,
+            action: () => {
+              if (post) onGradeAssessment(post, course.id);
+            }
+          });
+        });
+      }
+
+      // สำหรับนักเรียน: แสดงสิ่งที่เกิดขึ้นใน classroom ทั้งหมดที่สังกัด (งานใหม่, เนื้อหาใหม่, การตรวจงาน)
+      if (!isTeacher || !isOwner) {
+        // งานและเนื้อหาที่อาจารย์โพสต์
+        (s.posts || []).forEach(p => {
+          list.push({
+            id: `post-${course.id}-${p.id}`,
+            type: p.kind === 'assignment' ? 'assignment' : 'material',
+            title: p.kind === 'assignment' ? `งานใหม่: ${p.title}` : `เนื้อหาใหม่: ${p.title}`,
+            description: `อาจารย์ ${p.authorName || course.teacherName} ได้โพสต์ในวิชา ${course.name}${p.dueAt ? ` · กำหนดส่ง ${date(p.dueAt)}` : ''}`,
+            courseId: course.id,
+            courseName: course.name,
+            timestamp: p.createdAt,
+            post: p,
+            action: () => {
+              onOpenPost(p, course.id);
+            }
+          });
+        });
+
+        // ประกาศผลคะแนนที่ตรวจแล้ว
+        Object.entries(s.gradebooks || {}).forEach(([postId, grades]) => {
+          const myGrade = grades?.[profile.id];
+          if (myGrade) {
+            const post = (s.posts || []).find(p => p.id === postId);
+            list.push({
+              id: `grade-${course.id}-${postId}-${profile.id}-${myGrade.gradedAt || ''}`,
+              type: 'grade',
+              title: `ตรวจงานแล้ว: ${post?.title || 'งานที่มอบหมาย'}`,
+              description: `ได้รับ ${myGrade.score} / ${post?.maxScore || 100} คะแนน ในวิชา ${course.name}${myGrade.feedback ? ` · "${myGrade.feedback}"` : ''}`,
+              courseId: course.id,
+              courseName: course.name,
+              timestamp: myGrade.gradedAt || post?.createdAt,
+              post,
+              action: () => {
+                if (post) onOpenPost(post, course.id);
+              }
+            });
+          }
+        });
+      }
+    });
+
+    return list.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  }, [homeStates, profile, teacher]);
+
+  const unreadCount = notifications.filter(n => !readIds.includes(n.id)).length;
+
+  const markAllAsRead = () => {
+    const allIds = notifications.map(n => n.id);
+    setReadIds(allIds);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(allIds));
+    } catch {}
+  };
+
+  const handleToggle = () => {
+    if (!open) {
+      // เมื่อกดเปิดดู ให้ถือว่าอ่านแล้วเพื่อเคลียร์จุดแดงทันทีตามที่ผู้ใช้ต้องการ
+      markAllAsRead();
+    }
+    setOpen(prev => !prev);
+  };
+
+  const handleItemClick = (item) => {
+    if (!readIds.includes(item.id)) {
+      const updated = [...readIds, item.id];
+      setReadIds(updated);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+      } catch {}
+    }
+    setOpen(false);
+    if (item.action) {
+      item.action();
+    }
+  };
+
+  const ref = useRef(null);
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [open]);
+
+  return (
+    <div className="notif-wrapper" ref={ref}>
+      <button
+        className="icon-btn notif-btn"
+        aria-label="การแจ้งเตือน"
+        onClick={handleToggle}
+        title="การแจ้งเตือน"
+      >
+        <Bell size={18}/>
+        {unreadCount > 0 && <span className="notif-badge" />}
+      </button>
+
+      {open && (
+        <div className="notif-dropdown">
+          <div className="notif-head">
+            <div className="notif-head-title">
+              <strong>การแจ้งเตือน</strong>
+              <span className="notif-head-badge">{notifications.length}</span>
+            </div>
+            {notifications.length > 0 && (
+              <button className="notif-clear-btn" onClick={markAllAsRead}>
+                <Check size={13}/> อ่านแล้วทั้งหมด
+              </button>
+            )}
+          </div>
+
+          <div className="notif-scroll">
+            {notifications.length > 0 ? (
+              notifications.slice(0, 30).map(item => {
+                const isUnread = !readIds.includes(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    className={`notif-card ${isUnread ? 'unread' : ''}`}
+                    onClick={() => handleItemClick(item)}
+                  >
+                    <div className={`notif-type-icon ${item.type}`}>
+                      {item.type === 'submission' && <Upload size={14}/>}
+                      {item.type === 'assignment' && <ClipboardList size={14}/>}
+                      {item.type === 'material' && <BookOpen size={14}/>}
+                      {item.type === 'grade' && <CheckCircle2 size={14}/>}
+                    </div>
+                    <div className="notif-body">
+                      <div className="notif-meta">
+                        <span className="notif-course-tag">{item.courseName}</span>
+                        <span className="notif-time">{timeAgo(item.timestamp)}</span>
+                      </div>
+                      <strong className="notif-title">{item.title}</strong>
+                      <p className="notif-desc">{item.description}</p>
+                    </div>
+                    {isUnread && <span className="notif-dot" />}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="notif-empty">
+                <Bell size={32}/>
+                <p>ยังไม่มีการแจ้งเตือนในขณะนี้</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(getSession), [boot, setBoot] = useState(null), [bootError, setBootError] = useState(''), [cid, setCid] = useState(''), [lastCid, setLastCid] = useState(''), [state, setState] = useState(null), [homeStates, setHomeStates] = useState([]), [homeLoading, setHomeLoading] = useState(false), [homeRefreshKey, setHomeRefreshKey] = useState(0), [tab, setTab] = useState('home'), [modal, setModal] = useState(null), [detail, setDetail] = useState(null), [grading, setGrading] = useState(null), [toast, setToast] = useState(''), [loading, setLoading] = useState(false);
   const profile = boot?.profile, teacher = profile?.role === 'teacher';
@@ -17,7 +234,13 @@ export default function App() {
   function login(value) {saveSession(value); setSession(value); setBoot(null); setBootError(''); setState(null); setCid(''); setLastCid('');}
   function logout() {const pending = signOut(); setSession(null); setState(null); setBoot(null); setBootError(''); setCid(''); setLastCid(''); setModal(null); setDetail(null); setGrading(null); pending.catch(error => notify(error.message));}
   async function bootstrap(nextId) {setBootError(''); try {const r = await rpc('bootstrap'); setBoot(r); if (nextId) {setTab('stream'); setCid(nextId); setLastCid(nextId);} return r;} catch (error) {setBootError(error.message); throw error;}}
-  async function refresh() {if (cid) setState(await rpc('getClass', {classId: cid}));}
+  async function refresh() {
+    if (cid) {
+      const updated = await rpc('getClass', {classId: cid});
+      setState(updated);
+      setHomeStates(prev => prev.map(s => s?.course?.id === cid ? updated : s));
+    }
+  }
   async function loadHome() {
     if (!boot?.courses?.length || boot.profile?.role === 'admin') {setHomeStates([]); return;}
     setHomeLoading(true);
@@ -82,6 +305,12 @@ export default function App() {
   }
   useEffect(() => {if (session) bootstrap().catch(e => notify(e.message));}, [session]);
   useEffect(() => {if (boot && boot.profile?.role !== 'admin') loadHome();}, [boot?.profile?.id, boot?.courses, homeRefreshKey]);
+  useEffect(() => {
+    if (!boot || boot.profile?.role === 'admin') return;
+    const poll = () => {if (!document.hidden) loadHome();};
+    const interval = setInterval(poll, 30000);
+    return () => clearInterval(interval);
+  }, [boot?.profile?.id, boot?.courses]);
   useEffect(() => {
     if (!cid) return;
     let stale = false;
@@ -151,7 +380,7 @@ export default function App() {
       </aside>
       <main className="main-content">
         {isLocal && <div className="local-banner"><span/>โหมดสาธิตในเครื่อง · ข้อมูลตัวอย่าง · ยังไม่ deploy ระบบใหม่บน AWS</div>}
-        <header className="topbar"><div className="breadcrumb">{!cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
+        <header className="topbar"><div className="breadcrumb">{!cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><NotificationBell homeStates={homeStates} profile={profile} teacher={teacher} onOpenPost={handleOpenPost} onGradeAssessment={handleGradeAssessment}/><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
         <div className="page-content">
           <div key={cid ? `${cid}-${tab}` : tab} className="tab-pane">
             {tab === 'home' ? (
