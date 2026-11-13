@@ -60,11 +60,15 @@ npm run dev
 ## ตรวจสอบ
 
 ```powershell
+python -X utf8 -m unittest discover -s backend -v
+node --test tests/auth.mjs
 cd frontend
 npm run build
 cd ..
 python -X utf8 scripts/package.py
 ```
+
+ชุดทดสอบ browser อยู่ใน `tests/browser.mjs` ดูวิธีเรียกใช้ใน `docs/runbook.md`
 
 ## Deploy AWS
 
