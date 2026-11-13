@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {Layers, Sparkles, ArrowUpRight, GraduationCap, Plus, BookOpen, ClipboardList, X, Paperclip, Upload, Send, Check} from 'lucide-react';
+import {Layers, Sparkles, ArrowUpRight, GraduationCap, Plus, BookOpen, ClipboardList, X, Paperclip, Upload, Send, Check, Users} from 'lucide-react';
 import {rpc, cognito, config, isLocal, uploadFile, getGoogleAuthUrl} from './api';
 import {Btn, Badge, Avatar, Modal, Field, Files, FilePicker, Empty, date, num} from './ui';
 
@@ -99,19 +99,70 @@ export function Grading({assessment, state, close, refresh, notify}) {
   const students = state.members.filter(m => m.role === 'student');
   const isAssignment = assessment.kind === 'assignment';
   const submitted = new Map(state.submissions.filter(s => s.postId === assessment.id).map(s => [s.userId, s]));
-  const ranked = [...students].sort((a, b) => {
-    if (isAssignment) {
-      const first = submitted.get(a.userId), second = submitted.get(b.userId);
-      if (Boolean(first) !== Boolean(second)) return first ? -1 : 1;
-      if (first && second) {
-        const latest = String(second.submittedAt || '').localeCompare(String(first.submittedAt || ''));
-        if (latest) return latest;
-      }
-      return String(a.studentId || a.name).localeCompare(String(b.studentId || b.name), 'th');
+  const [statusFilter, setStatusFilter] = useState('all'), [sortOrder, setSortOrder] = useState(isAssignment ? 'submitted-first' : 'score-desc');
+  const [selected, setSelected] = useState(''), [busy, setBusy] = useState(false);
+  const submittedCount = students.filter(m => submitted.has(m.userId)).length;
+  const lateCount = students.filter(m => submitted.get(m.userId)?.late).length;
+  const ranked = students.filter(m => !isAssignment || statusFilter === 'all' ||
+    (statusFilter === 'submitted' && submitted.has(m.userId)) ||
+    (statusFilter === 'pending' && !submitted.has(m.userId)) ||
+    (statusFilter === 'late' && submitted.get(m.userId)?.late)
+  ).sort((a, b) => {
+    const first = submitted.get(a.userId), second = submitted.get(b.userId);
+    const byCode = String(a.studentId || a.name).localeCompare(String(b.studentId || b.name), 'th');
+    if (sortOrder === 'name') return a.name.localeCompare(b.name, 'th') || byCode;
+    if (sortOrder === 'student-id') return byCode;
+    if (sortOrder === 'score-desc' || sortOrder === 'score-asc') {
+      const aScore = state.gradebooks[assessment.id]?.[a.userId]?.score, bScore = state.gradebooks[assessment.id]?.[b.userId]?.score;
+      if ((aScore == null) !== (bScore == null)) return aScore == null ? 1 : -1;
+      return (sortOrder === 'score-asc' ? 1 : -1) * ((aScore ?? 0) - (bScore ?? 0)) || byCode;
     }
-    return (state.gradebooks[assessment.id]?.[b.userId]?.score ?? -1) - (state.gradebooks[assessment.id]?.[a.userId]?.score ?? -1);
+    if (Boolean(first) !== Boolean(second)) return (first ? -1 : 1) * (sortOrder === 'pending-first' ? -1 : 1);
+    const byTime = String(second?.submittedAt || '').localeCompare(String(first?.submittedAt || ''));
+    return (sortOrder === 'oldest' ? -byTime : byTime) || byCode;
   });
-  const [selected, setSelected] = useState(ranked[0]?.userId), [busy, setBusy] = useState(false);
-  const student = students.find(s => s.userId === selected), submission = state.submissions.find(s => s.postId === assessment.id && s.userId === selected), grade = state.gradebooks[assessment.id]?.[selected];
-  return <Modal title={`ให้คะแนน · ${assessment.title}`} close={close} wide>{students.length ? <div className="grading-layout"><div className="grading-students">{ranked.map(m => <button key={m.userId} className={selected === m.userId ? 'selected' : ''} onClick={() => setSelected(m.userId)}><Avatar name={m.name} small/><span className="grading-student-copy">{m.name}<small>{m.studentId}</small>{isAssignment && <span className="grading-submission-status"><Badge tone={!submitted.has(m.userId) ? 'gray' : submitted.get(m.userId).late ? 'orange' : ''}>{!submitted.has(m.userId) ? 'ยังไม่ส่ง' : submitted.get(m.userId).late ? 'ส่งช้า' : 'ส่งแล้ว'}</Badge>{submitted.has(m.userId) && <small>ส่งเมื่อ {date(submitted.get(m.userId).submittedAt)}</small>}</span>}</span><strong>{num(state.gradebooks[assessment.id]?.[m.userId]?.score)}</strong></button>)}</div><div key={selected}><h3>{student.name}</h3><p className="muted">{student.studentId}</p>{assessment.kind === 'assignment' && <><Badge tone={!submission || submission.late ? 'orange' : ''}>{!submission ? 'ยังไม่ส่งงาน' : submission.late ? 'ส่งช้า' : 'ส่งแล้ว'}</Badge><p>{submission?.comment}</p><Files files={submission?.files} classId={state.course.id} notify={notify}/></>}<form onSubmit={async e => {e.preventDefault(); setBusy(true); const form = Object.fromEntries(new FormData(e.target)), rubricScores = Object.fromEntries((assessment.rubric || []).map(r => [r.id, Number(form['rubric-' + r.id])])); const score = assessment.rubric?.length ? Object.values(rubricScores).reduce((s, n) => s + n, 0) : Number(form.score); try {await rpc('grade', {classId: state.course.id, assessmentId: assessment.id, userId: selected, score, rubricScores, feedback: form.feedback, expectedVersion: state.gradebookVersions[assessment.id] || 0}); await refresh(); notify('บันทึกคะแนนแล้ว');} catch (err) {notify(err.message);} finally {setBusy(false);}}}>{assessment.rubric?.length ? assessment.rubric.map(r => <Field key={r.id} label={`${r.title} (เต็ม ${r.max})`} name={'rubric-' + r.id} type="number" min={0} max={r.max} step="any" defaultValue={grade?.rubricScores?.[r.id] ?? ''} required/>) : <Field label={`คะแนน (เต็ม ${assessment.maxScore})`} type="number" name="score" min={0} max={assessment.maxScore} step="any" defaultValue={grade?.score ?? ''} required/>}<label className="field">ข้อเสนอแนะ<textarea name="feedback" rows={3} maxLength={2000} defaultValue={grade?.feedback || ''}/></label><Btn disabled={busy} icon={Check}>{busy ? 'กำลังบันทึก…' : 'บันทึกคะแนน'}</Btn></form></div></div> : <Empty>ยังไม่มีนักเรียนในห้องเรียน</Empty>}</Modal>;
+  const student = ranked.find(s => s.userId === selected) || ranked[0], activeId = student?.userId;
+  const submission = submitted.get(activeId), grade = state.gradebooks[assessment.id]?.[activeId];
+  async function save(e) {
+    e.preventDefault();
+    if (busy || !activeId) return;
+    setBusy(true);
+    const form = Object.fromEntries(new FormData(e.target));
+    const rubricScores = Object.fromEntries((assessment.rubric || []).map(r => [r.id, Number(form['rubric-' + r.id])]));
+    const score = assessment.rubric?.length ? Object.values(rubricScores).reduce((sum, value) => sum + value, 0) : Number(form.score);
+    try {await rpc('grade', {classId: state.course.id, assessmentId: assessment.id, userId: activeId, score, rubricScores, feedback: form.feedback, expectedVersion: state.gradebookVersions[assessment.id] || 0}); await refresh(); notify('บันทึกคะแนนแล้ว');}
+    catch (error) {notify(error.message);} finally {setBusy(false);}
+  }
+  return <Modal title={`ให้คะแนน · ${assessment.title}`} close={busy ? undefined : close} wide>
+    {students.length ? <>
+      <div className="grading-controls">
+        {isAssignment && <label className="field">สถานะการส่งงาน<select aria-label="สถานะการส่งงาน" value={statusFilter} disabled={busy} onChange={e => setStatusFilter(e.target.value)}>
+          <option value="all">ทั้งหมด ({students.length})</option>
+          <option value="submitted">ส่งแล้ว รวมส่งช้า ({submittedCount})</option>
+          <option value="pending">ยังไม่ส่ง ({students.length - submittedCount})</option>
+          <option value="late">ส่งช้า ({lateCount})</option>
+        </select></label>}
+        <label className="field">เรียงลำดับนักเรียน<select aria-label="เรียงลำดับนักเรียน" value={sortOrder} disabled={busy} onChange={e => setSortOrder(e.target.value)}>
+          {isAssignment && <><option value="submitted-first">ส่งแล้วก่อน</option><option value="pending-first">ยังไม่ส่งก่อน</option><option value="latest">ส่งล่าสุดก่อน</option><option value="oldest">ส่งเก่าสุดก่อน</option></>}
+          <option value="student-id">รหัสนักเรียน</option><option value="name">ชื่อ ก–ฮ</option><option value="score-desc">คะแนนมากไปน้อย</option><option value="score-asc">คะแนนน้อยไปมาก</option>
+        </select></label>
+        <span className="muted grading-result-count" role="status">แสดง {ranked.length} / {students.length} คน</span>
+      </div>
+      {ranked.length ? <div className="grading-layout">
+        <div className="grading-students">{ranked.map(m => <button type="button" key={m.userId} disabled={busy} aria-pressed={activeId === m.userId} className={activeId === m.userId ? 'selected' : ''} onClick={() => setSelected(m.userId)}>
+          <Avatar name={m.name} small/><span className="grading-student-copy">{m.name}<small>{m.studentId}</small>
+          {isAssignment && <span className="grading-submission-status"><Badge tone={!submitted.has(m.userId) ? 'gray' : submitted.get(m.userId).late ? 'orange' : ''}>{!submitted.has(m.userId) ? 'ยังไม่ส่ง' : submitted.get(m.userId).late ? 'ส่งช้า' : 'ส่งแล้ว'}</Badge>{submitted.has(m.userId) && <small>ส่งเมื่อ {date(submitted.get(m.userId).submittedAt)}</small>}</span>}</span>
+          <strong>{num(state.gradebooks[assessment.id]?.[m.userId]?.score)}</strong>
+        </button>)}</div>
+        <div key={activeId}><h3>{student.name}</h3><p className="muted">{student.studentId}</p>
+          {isAssignment && <><Badge tone={!submission || submission.late ? 'orange' : ''}>{!submission ? 'ยังไม่ส่งงาน' : submission.late ? 'ส่งช้า' : 'ส่งแล้ว'}</Badge><p>{submission?.comment}</p><Files files={submission?.files} classId={state.course.id} notify={notify}/></>}
+          <form onSubmit={save}>
+            {assessment.rubric?.length ? assessment.rubric.map(r => <Field key={r.id} label={`${r.title} (เต็ม ${r.max})`} name={'rubric-' + r.id} type="number" min={0} max={r.max} step="any" defaultValue={grade?.rubricScores?.[r.id] ?? ''} required/>) : <Field label={`คะแนน (เต็ม ${assessment.maxScore})`} type="number" name="score" min={0} max={assessment.maxScore} step="any" defaultValue={grade?.score ?? ''} required/>}
+            <label className="field">ข้อเสนอแนะ<textarea name="feedback" rows={3} maxLength={2000} defaultValue={grade?.feedback || ''}/></label>
+            <Btn disabled={busy} icon={Check}>{busy ? 'กำลังบันทึก…' : 'บันทึกคะแนน'}</Btn>
+          </form>
+        </div>
+      </div> : <Empty icon={Users}>ไม่พบนักเรียนตามตัวกรองที่เลือก</Empty>}
+    </> : <Empty>ยังไม่มีนักเรียนในห้องเรียน</Empty>}
+  </Modal>;
 }

@@ -69,7 +69,8 @@ export default function HomeDashboard({courses = [], states = [], profile, teach
     <div className="home-columns">
       <section className="panel home-panel">
         <div className="section-title"><div><h2>{teacher ? 'งานที่ต้องตรวจ' : 'การบ้านที่ยังไม่ส่ง'}</h2><p className="muted">{teacher ? 'ติดตามงานที่ส่งแล้วแต่ยังไม่ได้ให้คะแนน' : 'งานที่ควรจัดการก่อนถึงกำหนดส่ง'}</p></div><CalendarDays size={20}/></div>
-        {assignments.slice().sort((a, b) => String(a.dueAt).localeCompare(String(b.dueAt))).slice(0, 6).map(item => {
+        <div className="home-panel-scroll" role="region" aria-label={teacher ? 'รายการงานที่ต้องตรวจ' : 'รายการการบ้านที่ยังไม่ส่ง'} tabIndex={0}>
+        {assignments.slice().sort((a, b) => String(a.dueAt).localeCompare(String(b.dueAt))).map(item => {
           const overdue = item.dueAt && new Date(item.dueAt) < new Date();
           return <button className="home-task" key={`${item.courseId}-${item.id}`} onClick={() => onOpen(item.courseId, 'work', item.id)}>
             <span className={`home-task-icon ${overdue ? 'overdue' : ''}`}><ClipboardList size={17}/></span>
@@ -78,17 +79,20 @@ export default function HomeDashboard({courses = [], states = [], profile, teach
           </button>;
         })}
         {!assignments.length && <div className="home-success"><CheckCircle2 size={19}/><span>{teacher ? 'ยังไม่มีงานที่รอตรวจ' : 'ไม่มีการบ้านค้าง เยี่ยมมาก'}</span></div>}
+        </div>
       </section>
 
       <section className="panel home-panel">
         <div className="section-title"><div><h2>ประกาศล่าสุด</h2><p className="muted">โพสต์ใหม่จากอาจารย์ในทุกห้องเรียน</p></div><Megaphone size={20}/></div>
-        {updates.slice(0, 6).map(post => <button className="home-update" key={`${post.courseId}-${post.id}`} onClick={() => onOpen(post.courseId, 'stream', post.id)}>
+        <div className="home-panel-scroll" role="region" aria-label="รายการประกาศล่าสุด" tabIndex={0}>
+        {updates.map(post => <button className="home-update" key={`${post.courseId}-${post.id}`} onClick={() => onOpen(post.courseId, 'stream', post.id)}>
           <span className={`home-update-icon ${post.kind}`}><span>{post.kind === 'assignment' ? <ClipboardList size={16}/> : <Megaphone size={16}/>}</span></span>
           <span className="home-update-copy"><strong>{post.title}</strong><small>{post.course.name} · {date(post.createdAt)}</small></span>
           {isNew(post) && <Badge>ใหม่</Badge>}
           <ArrowUpRight size={16}/>
         </button>)}
         {!updates.length && <div className="home-empty-inline"><Megaphone size={21}/><span>ยังไม่มีประกาศหรือโพสต์ใหม่</span></div>}
+        </div>
       </section>
     </div>
   </div>;
