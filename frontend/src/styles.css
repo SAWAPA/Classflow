@@ -297,3 +297,4 @@
 .item-check{color:#176b65;flex-shrink:0;}
 .course-filter-empty{padding:18px 12px;text-align:center;color:#8da4a0;font-size:11px;}
 @media(max-width:700px){.course-filter-dropdown-btn{max-width:100%;width:100%;justify-content:space-between;}.course-filter-dropdown-menu{width:calc(100vw - 32px);}}
+.post-attachment-section{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.post-attachment-section>h3{display:flex;align-items:center;gap:8px;margin:0;color:var(--ink)}.post-attachment-section>h3 svg{color:var(--teal)}.post-attachment-section .dropzone{margin-top:14px}
