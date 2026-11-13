@@ -9,7 +9,7 @@ import Messages from './Messages';
 import Dashboard from './Dashboard';
 import HomeDashboard from './HomeDashboard';
 const labels = {home: 'หน้าหลัก', stream: 'หน้าชั้นเรียน', work: 'งานในชั้นเรียน', dashboard: 'คะแนนและเกรด', people: 'สมาชิก', messages: 'ข้อความ', timeline: 'กำหนดส่งงาน'};
-const navigation = [[Home, 'home'], [ClipboardList, 'work'], [LayoutDashboard, 'dashboard'], [Users, 'people'], [MessageCircle, 'messages'], [CalendarDays, 'timeline']];
+const navigation = [[Home, 'home'], [ClipboardList, 'work'], [MessageCircle, 'messages'], [CalendarDays, 'timeline']];
 
 function timeAgo(dateString) {
   if (!dateString) return '';
@@ -965,8 +965,8 @@ export default function App() {
       goHome();
       return;
     }
-    if (id === 'work') {
-      setTab('work');
+    if (id === 'work' || id === 'timeline') {
+      setTab(id);
       return;
     }
     const targetId = cid || lastCid || boot?.courses?.[0]?.id;
@@ -1074,6 +1074,8 @@ export default function App() {
               <HomeDashboard courses={boot?.courses || []} states={homeStates} profile={profile} teacher={teacher} onOpen={openClass}/>
             ) : tab === 'work' && !cid ? (
               <Work state={null} states={homeStates} courses={boot?.courses || []} profile={profile} open={handleOpenPost} grade={handleGradeAssessment} create={() => setModal('post')}/>
+            ) : tab === 'timeline' && !cid ? (
+              <Timeline state={null} states={homeStates} courses={boot?.courses || []} profile={profile} open={handleOpenPost}/>
             ) : loading && !state ? (
               <Empty icon={RefreshCw}>กำลังโหลดห้องเรียน…</Empty>
             ) : !state ? (
@@ -1089,7 +1091,7 @@ export default function App() {
             ) : <>
               <section className={'course-hero ' + (tab !== 'stream' ? 'compact' : '')}><div className="hero-copy"><div className="hero-meta"><span>CLASSROOM / {state.course.subject}</span><Badge tone="glass">{teacher ? 'TEACHER SPACE' : 'STUDENT SPACE'}</Badge></div><h1>{state.course.name}</h1><p>{state.course.description || 'พื้นที่เรียนรู้และเติบโตไปด้วยกัน'}</p><div className="hero-footer"><Avatar name={state.course.teacherName} small/><span>{state.course.teacherName}</span><i/>ภาคเรียนของเรา</div></div><div className="hero-art"><div className="art-ring"/><div className="floating-book"><BookOpen size={55}/></div><div className="floating-star">✳</div><div className="little-card"><CheckMark/><span>Learning, in flow.</span></div></div></section>
               {tab === 'stream' && <div className="overview-row">{[[ClipboardList, 'งานที่มอบหมาย', state.posts.filter(p => p.kind === 'assignment').length, 'ชิ้น'], [Users, teacher ? 'นักเรียนในห้อง' : 'เพื่อนร่วมชั้น', state.members.filter(m => m.role === 'student').length, 'คน'], [FileText, 'เนื้อหาการเรียน', state.posts.filter(p => p.kind === 'material').length, 'โพสต์']].map(([Icon, label, count, unit]) => <div key={label}><span className="overview-icon"><Icon size={21}/></span><div><small>{label}</small><strong>{count}<span>{unit}</span></strong></div><ArrowUpRight size={16}/></div>)}</div>}
-              <div className="content-tabs">{['stream', 'work', 'dashboard', 'people', 'messages', 'timeline'].map(id => <button className={tab === id ? 'active' : ''} key={id} onClick={() => id === 'messages' ? openChat(chatPeer) : setTab(id)}>{labels[id]}</button>)}{teacher && <button className="quick-create" onClick={() => setModal('post')}><Plus size={16}/> สร้างโพสต์</button>}</div>
+              <div className="content-tabs">{['stream', 'work', 'messages', 'timeline'].map(id => <button className={tab === id ? 'active' : ''} key={id} onClick={() => id === 'messages' ? openChat(chatPeer) : setTab(id)}>{labels[id]}</button>)}{teacher && <button className="quick-create" onClick={() => setModal('post')}><Plus size={16}/> สร้างโพสต์</button>}</div>
               {tab === 'stream' && <Stream state={state} profile={profile} open={handleOpenPost} create={() => setModal('post')}/>}
               {tab === 'work' && <Work state={state} states={[]} courses={state?.course ? [state.course] : []} profile={profile} open={handleOpenPost} grade={handleGradeAssessment} create={() => setModal('post')}/>}
               {tab === 'dashboard' && <Dashboard key={cid} state={state} profile={profile} refresh={refresh} notify={notify} grade={setGrading}/>}
@@ -1145,7 +1147,7 @@ export default function App() {
                   </div>
                 );
               })()}
-              {tab === 'timeline' && <Timeline state={state} profile={profile} open={handleOpenPost}/>}
+              {tab === 'timeline' && <Timeline state={state} states={homeStates} courses={boot?.courses || []} profile={profile} open={handleOpenPost}/>}
             </>}
           </div>
         </div>

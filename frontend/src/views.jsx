@@ -523,7 +523,153 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
     </div>
   );
 }
-export function Timeline({state, profile, open}) {
-  const teacher = profile.id === state.course.ownerId, posts = state.posts.filter(p => p.kind === 'assignment').sort((a, b) => String(b.createdAt || b.dueAt).localeCompare(String(a.createdAt || a.dueAt)));
-  return <section className="panel"><div className="section-title"><div><div className="eyebrow">ONE STEP AT A TIME</div><h2>เส้นทางการเรียนรู้</h2><p className="muted">เห็นทุกกำหนดส่ง วางแผนได้ก่อนถึงวันจริง</p></div><CalendarDays size={28}/></div><div className="timeline">{posts.map(p => {const mine = state.submissions.find(s => s.postId === p.id && s.userId === profile.id); return <button className="timeline-item" key={p.id} onClick={() => open(p)}><span className={`timeline-dot ${new Date(p.dueAt) < new Date() ? 'past' : ''}`}/><div className="timeline-date">{date(p.dueAt)}</div><div><h3>{p.title}</h3><p>{p.maxScore} คะแนน · {teacher ? `ส่งแล้ว ${state.submissions.filter(s => s.postId === p.id).length} คน` : mine ? mine.late ? 'ส่งช้า' : 'ส่งแล้ว' : 'ยังไม่ส่ง'}</p></div><ArrowUpRight size={18}/></button>;})}{!posts.length && <Empty icon={CalendarDays}>ยังไม่มีกำหนดส่งงาน</Empty>}</div></section>;
+export function Timeline({state, states = [], courses = [], profile, open}) {
+  const [courseFilter, setCourseFilter] = useState('all');
+
+  // รวบรวมข้อมูลห้องเรียนทั้งหมด
+  const entries = useMemo(() => {
+    if (state && (!states || states.length === 0)) return [state];
+    if (states && states.length > 0) {
+      if (state && !states.some(s => s?.course?.id === state?.course?.id)) {
+        return [state, ...states];
+      }
+      return states;
+    }
+    return state ? [state] : [];
+  }, [state, states]);
+
+  const availableCourses = useMemo(() => {
+    if (courses && courses.length > 0) return courses;
+    const list = [];
+    const seen = new Set();
+    entries.forEach(s => {
+      if (s?.course && !seen.has(s.course.id)) {
+        seen.add(s.course.id);
+        list.push(s.course);
+      }
+    });
+    return list;
+  }, [courses, entries]);
+
+  const allPosts = useMemo(() => {
+    const now = new Date();
+    return entries.flatMap(s => {
+      const isTeacher = profile?.id === s?.course?.ownerId;
+      const submissions = s?.submissions || [];
+      return (s?.posts || [])
+        .filter(p => p && p.kind === 'assignment')
+        .map(p => {
+          const mine = submissions.find(sub => sub.postId === p.id && sub.userId === profile?.id);
+          const submitted = submissions.filter(sub => sub.postId === p.id);
+          const dueDate = p.dueAt ? new Date(p.dueAt) : null;
+          const isPast = Boolean(dueDate && dueDate < now);
+
+          return {
+            ...p,
+            course: s?.course,
+            courseId: s?.course?.id,
+            mine,
+            submittedCount: submitted.length,
+            isTeacher,
+            dueDate,
+            isPast
+          };
+        });
+    });
+  }, [entries, profile?.id]);
+
+  const filteredPosts = useMemo(() => {
+    const list = courseFilter === 'all'
+      ? allPosts
+      : allPosts.filter(p => p.courseId === courseFilter);
+
+    return list.sort((a, b) => {
+      if (a.dueDate && b.dueDate) return a.dueDate - b.dueDate;
+      if (a.dueDate && !b.dueDate) return -1;
+      if (!a.dueDate && b.dueDate) return 1;
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
+  }, [allPosts, courseFilter]);
+
+  return (
+    <section className="panel">
+      <div className="section-title">
+        <div>
+          <div className="eyebrow">ONE STEP AT A TIME</div>
+          <h2>กำหนดส่งงาน</h2>
+          <p className="muted">
+            {courseFilter === 'all'
+              ? `รวมกำหนดส่งงานทั้งหมดจากทุกรายวิชา (${allPosts.length} งาน)`
+              : `กำหนดส่งงานในรายวิชา ${availableCourses.find(c => c.id === courseFilter)?.name || ''} (${filteredPosts.length} งาน)`}
+          </p>
+        </div>
+        <CalendarDays size={28}/>
+      </div>
+
+      {/* แถบฟิลเตอร์เลือกรายวิชา */}
+      {availableCourses.length > 0 && (
+        <div className="work-filter-bar" style={{marginBottom: '20px'}}>
+          <div className="filter-title">
+            <Filter size={15}/>
+            <span>รายวิชา:</span>
+          </div>
+          <div className="filter-chips">
+            <button
+              type="button"
+              className={`filter-chip ${courseFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setCourseFilter('all')}
+            >
+              ทุกรายวิชา <span className="chip-badge">{allPosts.length}</span>
+            </button>
+            {availableCourses.map(c => {
+              const count = allPosts.filter(p => p.courseId === c.id).length;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`filter-chip ${courseFilter === c.id ? 'active' : ''}`}
+                  onClick={() => setCourseFilter(c.id)}
+                >
+                  {c.name} <span className="chip-badge">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="timeline">
+        {filteredPosts.map(p => {
+          return (
+            <button
+              className="timeline-item"
+              key={`${p.courseId || 'c'}-${p.id}`}
+              onClick={() => open(p, p.courseId)}
+            >
+              <span className={`timeline-dot ${p.isPast ? 'past' : ''}`}/>
+              <div className="timeline-date">{p.dueAt ? date(p.dueAt) : 'ไม่มีกำหนดส่ง'}</div>
+              <div style={{flex: 1, minWidth: 0}}>
+                {p.course?.name && (
+                  <span className="timeline-course-tag">
+                    <BookOpen size={11}/>
+                    <span>{p.course.name}</span>
+                  </span>
+                )}
+                <h3>{p.title}</h3>
+                <p>
+                  {p.maxScore} คะแนน · {p.isTeacher ? `ส่งแล้ว ${p.submittedCount} คน` : p.mine ? (p.mine.late ? 'ส่งช้า' : 'ส่งแล้ว') : (p.isPast ? 'เลยกำหนดส่ง' : 'ยังไม่ส่ง')}
+                </p>
+              </div>
+              <ArrowUpRight size={18}/>
+            </button>
+          );
+        })}
+        {!filteredPosts.length && (
+          <Empty icon={CalendarDays}>
+            {courseFilter !== 'all' ? 'ไม่มีกำหนดส่งงานในรายวิชานี้' : 'ยังไม่มีกำหนดส่งงาน'}
+          </Empty>
+        )}
+      </div>
+    </section>
+  );
 }
