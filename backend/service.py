@@ -7,6 +7,7 @@ from pathlib import Path
 import mimetypes
 
 from domain import DEFAULT_GRADING, build_report, numeric, validate_grading
+from store import Conflict
 
 BLOCKED_EXTENSIONS = {
     '.exe', '.dll', '.so', '.dylib', '.com', '.msi', '.vbs', '.scr', '.bat', '.cmd', '.svg', '.app', '.dmg', '.iso', '.pif', '.lnk'
@@ -304,11 +305,101 @@ class Classroom:
         return build_report(state['members'], state['posts'], state['exams'], state['gradebooks'],
                             {f"{s['postId']}#{s['userId']}": s for s in state['submissions']}, config or state['course']['grading'])
 
+    @staticmethod
+    def message_key(message):
+        timestamp = dt.datetime.fromisoformat(message['createdAt'].replace('Z', '+00:00'))
+        return timestamp.astimezone(dt.timezone.utc).isoformat(timespec='microseconds').replace('+00:00', 'Z') + '#' + message['id']
+
+    @staticmethod
+    def conversation_pk(uid, peer):
+        return 'DM#' + json.dumps(sorted([uid, peer]), separators=(',', ':'))
+
+    def chat_contacts(self, user):
+        uid = user['id']
+        contacts = {}
+        for link in self.db.list('U#' + uid, 'CLASS#'):
+            cid = link['classId']
+            course = self.db.get('C#' + cid, 'META')
+            member = self.db.get('C#' + cid, 'MEMBER#' + uid)
+            if not course or not member:
+                continue
+            if course['ownerId'] == uid:
+                peers = [m for m in self.db.list('C#' + cid, 'MEMBER#') if m.get('role') == 'student' and m['userId'] != uid]
+            elif member.get('role') == 'student':
+                owner = self.db.get('U#' + course['ownerId'], 'PROFILE') or {}
+                peers = [{'userId': course['ownerId'], 'name': owner.get('name') or course.get('teacherName', 'อาจารย์'), 'role': 'teacher'}]
+            else:
+                peers = []
+            for peer in peers:
+                pid = peer['userId']
+                if pid not in contacts:
+                    current = self.db.get('U#' + pid, 'PROFILE') or peer
+                    contacts[pid] = {'peerId': pid, 'name': current.get('name', peer.get('name', 'สมาชิก')), 'studentId': current.get('studentId', ''), 'role': peer.get('role'), 'classes': []}
+                contacts[pid]['classes'].append({'id': cid, 'name': course['name'], 'studentUserId': pid if course['ownerId'] == uid else uid})
+        return contacts
+
+    def chat_history(self, uid, contact):
+        peer = contact['peerId']
+        messages = self.db.list(self.conversation_pk(uid, peer), 'MSG#')
+        # Merge old classroom threads without rewriting or deleting their records.
+        for course in contact['classes']:
+            messages.extend(self.db.list('C#' + course['id'], 'DM#' + course['studentUserId'] + '#'))
+        unique = {m['id']: m for m in messages if m.get('senderId') in (uid, peer)}
+        for message in unique.values():
+            message['readKey'] = self.message_key(message)
+        return sorted(unique.values(), key=self.message_key)
+
+    def chat_action(self, user, profile, action, data):
+        uid = user['id']
+        contacts = self.chat_contacts(user)
+        if action == 'listConversations':
+            inbox = []
+            for contact in contacts.values():
+                messages = self.chat_history(uid, contact)
+                read = self.db.get('U#' + uid, 'CHATREAD#' + contact['peerId']) or {}
+                unread = sum(m['senderId'] != uid and self.message_key(m) > read.get('through', '') for m in messages)
+                inbox.append({**contact, 'lastMessage': messages[-1] if messages else None, 'unreadCount': unread})
+            inbox.sort(key=lambda c: c['name'].casefold())
+            inbox.sort(key=lambda c: self.message_key(c['lastMessage']) if c['lastMessage'] else '', reverse=True)
+            return inbox
+        peer_id = data.get('peerId')
+        if not peer_id and data.get('classId'):
+            course, member = self.access(user, text(data['classId'], 64))
+            peer_id = data.get('studentUserId') if course['ownerId'] == uid else course['ownerId']
+        contact = contacts.get(text(peer_id, 128))
+        if not contact:
+            raise PermissionError('ไม่มีสิทธิ์เข้าถึงบทสนทนานี้')
+        messages = self.chat_history(uid, contact)
+        if action == 'markMessagesRead':
+            through = text(data.get('through'), 200)
+            if through not in {self.message_key(m) for m in messages}:
+                raise ValueError('ไม่พบข้อความที่อ่าน')
+            key = 'CHATREAD#' + contact['peerId']
+            for _ in range(3):
+                prior = self.db.get('U#' + uid, key) or {}
+                if prior.get('through', '') >= through:
+                    return {'read': True}
+                try:
+                    self.db.put('U#' + uid, key, {'through': through}, expected=prior.get('_version', 0))
+                    return {'read': True}
+                except Conflict:
+                    continue
+            raise Conflict('สถานะการอ่านเปลี่ยนแล้ว กรุณาลองใหม่')
+        if action == 'sendMessage':
+            message = {'entity': 'message', 'id': ident(), 'senderId': uid, 'senderName': profile['name'], 'text': text(data.get('text')), 'createdAt': dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds').replace('+00:00', 'Z')}
+            message['readKey'] = self.message_key(message)
+            self.db.put(self.conversation_pk(uid, contact['peerId']), 'MSG#' + self.message_key(message), message, expected=0)
+            messages.append(message)
+            messages.sort(key=self.message_key)
+        return messages[-100:]
+
     def run(self, user, action, data):
         profile = self.profile(user)
         uid = user['id']
         if user.get('role') != 'admin' and profile.get('role'):
             user = {**user, 'role': profile['role']}
+        if action in ('listConversations', 'getMessages', 'sendMessage', 'markMessagesRead'):
+            return self.chat_action(user, profile, action, data)
         if action == 'bootstrap':
             links = self.db.list('U#' + uid, 'CLASS#')
             courses = [self.db.get('C#' + l['classId'], 'META') for l in links]
@@ -524,15 +615,6 @@ class Classroom:
             publication = {'entity': 'publication', 'rows': report['rows'], 'config': report['config'], 'publishedAt': now()}
             self.db.put(pk, 'PUBLISHED', publication)
             return publication
-        if action in ('getMessages', 'sendMessage'):
-            target = text(data.get('studentUserId') if teacher else uid, 100)
-            student = self.db.get(pk, 'MEMBER#' + target)
-            if not student or student['role'] != 'student':
-                raise PermissionError('ไม่พบคู่สนทนาในห้องเรียน')
-            if action == 'sendMessage':
-                message = {'entity': 'message', 'id': ident(), 'senderId': uid, 'senderName': profile['name'], 'text': text(data.get('text')), 'createdAt': now()}
-                self.db.put(pk, f"DM#{target}#{message['createdAt']}#{message['id']}", message, expected=0)
-            return self.db.list(pk, f'DM#{target}#')[-100:]
         if action == 'initUpload':
             entity_id, context = text(data.get('entityId'), 64), data.get('context')
             post = self.db.get(pk, 'POST#' + entity_id)

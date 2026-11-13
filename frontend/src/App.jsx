@@ -4,7 +4,8 @@ import {rpc, isLocal, getSession, saveSession, exchangeGoogleCode, signOut, open
 import {Avatar, Badge, Btn, Empty, date} from './ui';
 import {Auth, ClassForm, Profile, PostForm, PostDetail, Grading, RoleModal} from './forms';
 import AdminPanel from './Admin';
-import {Stream, Work, Timeline, Messages} from './views';
+import {Stream, Work, Timeline} from './views';
+import Messages from './Messages';
 import Dashboard from './Dashboard';
 import HomeDashboard from './HomeDashboard';
 const labels = {home: 'หน้าหลัก', stream: 'หน้าชั้นเรียน', work: 'งานในชั้นเรียน', dashboard: 'คะแนนและเกรด', people: 'สมาชิก', messages: 'ข้อความ', timeline: 'กำหนดส่งงาน'};
@@ -24,7 +25,7 @@ function timeAgo(dateString) {
   return new Date(dateString).toLocaleDateString('th-TH', {day: 'numeric', month: 'short'});
 }
 
-function NotificationBell({homeStates = [], profile, teacher, onOpenPost, onGradeAssessment}) {
+function NotificationBell({homeStates = [], conversations = [], onOpenChat, profile, teacher, onOpenPost, onGradeAssessment}) {
   const [open, setOpen] = useState(false);
   const storageKey = `classflow_read_notis_${profile?.id || 'guest'}`;
 
@@ -37,8 +38,9 @@ function NotificationBell({homeStates = [], profile, teacher, onOpenPost, onGrad
   });
 
   const notifications = useMemo(() => {
-    if (!profile || !homeStates.length) return [];
+    if (!profile) return [];
     const list = [];
+    conversations.filter(c => c.unreadCount > 0).forEach(c => list.push({id: `chat-${c.peerId}`, type: 'message', title: `${c.name} ส่งมา ${c.unreadCount} ข้อความ`, description: c.lastMessage?.text || '', timestamp: c.lastMessage?.createdAt, courseName: 'ข้อความส่วนตัว', unreadCount: c.unreadCount, action: () => onOpenChat(c.peerId)}));
     const isTeacher = teacher || profile?.role === 'teacher';
 
     homeStates.forEach(s => {
@@ -113,9 +115,9 @@ function NotificationBell({homeStates = [], profile, teacher, onOpenPost, onGrad
     });
 
     return list.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-  }, [homeStates, profile, teacher]);
+  }, [homeStates, conversations, profile, teacher]);
 
-  const unreadCount = notifications.filter(n => !readIds.includes(n.id)).length;
+  const unreadCount = notifications.reduce((count, n) => count + (n.type === 'message' ? n.unreadCount : !readIds.includes(n.id) ? 1 : 0), 0);
 
   const markAllAsRead = () => {
     const allIds = notifications.map(n => n.id);
@@ -189,7 +191,7 @@ function NotificationBell({homeStates = [], profile, teacher, onOpenPost, onGrad
           <div className="notif-scroll">
             {notifications.length > 0 ? (
               notifications.slice(0, 30).map(item => {
-                const isUnread = !readIds.includes(item.id);
+                const isUnread = item.type === 'message' ? item.unreadCount > 0 : !readIds.includes(item.id);
                 return (
                   <div
                     key={item.id}
@@ -197,6 +199,7 @@ function NotificationBell({homeStates = [], profile, teacher, onOpenPost, onGrad
                     onClick={() => handleItemClick(item)}
                   >
                     <div className={`notif-type-icon ${item.type}`}>
+                      {item.type === 'message' && <MessageCircle size={14}/>}
                       {item.type === 'submission' && <Upload size={14}/>}
                       {item.type === 'assignment' && <ClipboardList size={14}/>}
                       {item.type === 'material' && <BookOpen size={14}/>}
@@ -865,6 +868,31 @@ function ClassSelector({cid, courses = [], onSelectCourse, onGoHome}) {
 export default function App() {
   const [session, setSession] = useState(getSession), [boot, setBoot] = useState(null), [bootError, setBootError] = useState(''), [cid, setCid] = useState(''), [lastCid, setLastCid] = useState(''), [state, setState] = useState(null), [homeStates, setHomeStates] = useState([]), [homeLoading, setHomeLoading] = useState(false), [homeRefreshKey, setHomeRefreshKey] = useState(0), [tab, setTab] = useState('home'), [modal, setModal] = useState(null), [detail, setDetail] = useState(null), [grading, setGrading] = useState(null), [toast, setToast] = useState(''), [loading, setLoading] = useState(false);
   const profile = boot?.profile, teacher = profile?.role === 'teacher';
+  const [conversations, setConversations] = useState([]), [chatPeer, setChatPeer] = useState(''), [inboxError, setInboxError] = useState('');
+  const inboxUser = useRef(profile?.id); inboxUser.current = profile?.id;
+  const unreadMessages = conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
+  async function refreshInbox() {
+    const owner = profile?.id;
+    if (!owner || profile.role === 'admin') return;
+    try {const result = await rpc('listConversations'); if (inboxUser.current === owner) {setConversations(result); setInboxError('');}}
+    catch (error) {if (inboxUser.current === owner) setInboxError(error.message);}
+  }
+  function openChat(peer = '') {setChatPeer(peer); setCid(''); setTab('messages');}
+  useEffect(() => {
+    setConversations([]); setChatPeer(''); setInboxError('');
+    if (!profile?.id || profile.role === 'admin') return;
+    let active = true, running = false;
+    const load = async () => {
+      if (!active || running || document.hidden) return;
+      running = true;
+      try {const result = await rpc('listConversations'); if (active) {setConversations(result); setInboxError('');}}
+      catch (error) {if (active) setInboxError(error.message);}
+      finally {running = false;}
+    };
+    load(); const timer = setInterval(load, 15000);
+    window.addEventListener('focus', load); document.addEventListener('visibilitychange', load);
+    return () => {active = false; clearInterval(timer); window.removeEventListener('focus', load); document.removeEventListener('visibilitychange', load);};
+  }, [profile?.id, profile?.role]);
   function notify(message) {setToast(message);}
   function login(value) {saveSession(value); setSession(value); setBoot(null); setBootError(''); setState(null); setCid(''); setLastCid('');}
   function logout() {const pending = signOut(); setSession(null); setState(null); setBoot(null); setBootError(''); setCid(''); setLastCid(''); setModal(null); setDetail(null); setGrading(null); pending.catch(error => notify(error.message));}
@@ -910,6 +938,7 @@ export default function App() {
     });
   }
   function handleNav(id) {
+    if (id === 'messages') {openChat(chatPeer); return;}
     if (tab === id && (id === 'home' ? !cid : Boolean(cid))) {
       return;
     }
@@ -1012,15 +1041,17 @@ export default function App() {
     {!session ? <Auth onLogin={login} notify={notify}/> : !boot ? <div className="welcome-empty"><RefreshCw size={45}/><h1>{bootError ? 'เข้าสู่ระบบไม่สำเร็จ' : 'กำลังตรวจสอบสิทธิ์…'}</h1><p className="muted">{bootError || 'ระบบกำลังเลือกหน้าให้ตรงกับยศของคุณ'}</p>{bootError && <Btn onClick={() => bootstrap().catch(() => {})}>ลองใหม่</Btn>}</div> : profile?.role === 'admin' ? <AdminPanel profile={profile} logout={logout} notify={notify}/> : <div className="app-shell">
       <aside className="sidebar"><div className="brand"><span><Layers/></span>classflow<span className="brand-dot">.</span></div><div className="workspace-label">YOUR WORKSPACE</div>
         <ClassSelector cid={cid} courses={boot?.courses || []} onSelectCourse={openClass} onGoHome={goHome}/>
-        <nav>{navigation.map(([Icon, id]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => handleNav(id)}><Icon size={19}/>{labels[id]}{id === 'work' && totalAssignmentsCount > 0 && <small>{totalAssignmentsCount}</small>}</button>)}</nav>
+        <nav>{navigation.map(([Icon, id]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => handleNav(id)}><Icon size={19}/>{labels[id]}{id === 'messages' && unreadMessages > 0 && <small aria-label={`${unreadMessages} ข้อความที่ยังไม่อ่าน`}>{unreadMessages}</small>}{id === 'work' && totalAssignmentsCount > 0 && <small>{totalAssignmentsCount}</small>}</button>)}</nav>
         <div className="sidebar-bottom"><button className="side-add" onClick={() => setModal('class')}><Plus size={18}/>{teacher ? 'สร้างห้องเรียน' : 'เข้าร่วมห้องเรียน'}</button><button className="profile-button" onClick={() => setModal('profile')}><Avatar name={profile?.name || '?'} small/><div><strong>{profile?.name || 'กำลังโหลด…'}</strong><small>{teacher ? 'อาจารย์' : 'นักเรียน'}</small></div><Settings size={16}/></button><button className="side-logout" onClick={logout}><LogOut size={15}/>ออกจากระบบ</button></div>
       </aside>
       <main className="main-content">
         {isLocal && <div className="local-banner"><span/>โหมดสาธิตในเครื่อง · ข้อมูลตัวอย่าง · ยังไม่ deploy ระบบใหม่บน AWS</div>}
-        <header className="topbar"><div className="breadcrumb">{!cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><CourseSearch courses={boot?.courses || []} homeStates={homeStates} state={state} cid={cid} onSelectCourse={openClass} onOpenPost={handleOpenPost} notify={notify}/><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><NotificationBell homeStates={homeStates} profile={profile} teacher={teacher} onOpenPost={handleOpenPost} onGradeAssessment={handleGradeAssessment}/><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
+        <header className="topbar"><div className="breadcrumb">{tab === 'messages' ? <>Classflow<ChevronRight size={14}/><strong>ข้อความส่วนตัว</strong></> : !cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><CourseSearch courses={boot?.courses || []} homeStates={homeStates} state={state} cid={cid} onSelectCourse={openClass} onOpenPost={handleOpenPost} notify={notify}/><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><NotificationBell conversations={conversations} onOpenChat={openChat} homeStates={homeStates} profile={profile} teacher={teacher} onOpenPost={handleOpenPost} onGradeAssessment={handleGradeAssessment}/><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
         <div className="page-content">
           <div key={cid ? `${cid}-${tab}` : tab} className="tab-pane">
-            {tab === 'home' ? (
+            {tab === 'messages' ? (
+              <>{inboxError && <p className="error-text" role="alert">{inboxError}</p>}<Messages profile={profile} conversations={conversations} peerId={chatPeer} onSelect={setChatPeer} refreshInbox={refreshInbox} notify={notify}/></>
+            ) : tab === 'home' ? (
               <HomeDashboard courses={boot?.courses || []} states={homeStates} profile={profile} teacher={teacher} onOpen={openClass}/>
             ) : tab === 'work' && !cid ? (
               <Work state={null} states={homeStates} courses={boot?.courses || []} profile={profile} open={handleOpenPost} grade={handleGradeAssessment} create={() => setModal('post')}/>
@@ -1039,7 +1070,7 @@ export default function App() {
             ) : <>
               <section className={'course-hero ' + (tab !== 'stream' ? 'compact' : '')}><div className="hero-copy"><div className="hero-meta"><span>CLASSROOM / {state.course.subject}</span><Badge tone="glass">{teacher ? 'TEACHER SPACE' : 'STUDENT SPACE'}</Badge></div><h1>{state.course.name}</h1><p>{state.course.description || 'พื้นที่เรียนรู้และเติบโตไปด้วยกัน'}</p><div className="hero-footer"><Avatar name={state.course.teacherName} small/><span>{state.course.teacherName}</span><i/>ภาคเรียนของเรา</div></div><div className="hero-art"><div className="art-ring"/><div className="floating-book"><BookOpen size={55}/></div><div className="floating-star">✳</div><div className="little-card"><CheckMark/><span>Learning, in flow.</span></div></div></section>
               {tab === 'stream' && <div className="overview-row">{[[ClipboardList, 'งานที่มอบหมาย', state.posts.filter(p => p.kind === 'assignment').length, 'ชิ้น'], [Users, teacher ? 'นักเรียนในห้อง' : 'เพื่อนร่วมชั้น', state.members.filter(m => m.role === 'student').length, 'คน'], [FileText, 'เนื้อหาการเรียน', state.posts.filter(p => p.kind === 'material').length, 'โพสต์']].map(([Icon, label, count, unit]) => <div key={label}><span className="overview-icon"><Icon size={21}/></span><div><small>{label}</small><strong>{count}<span>{unit}</span></strong></div><ArrowUpRight size={16}/></div>)}</div>}
-              <div className="content-tabs">{['stream', 'work', 'dashboard', 'people', 'messages', 'timeline'].map(id => <button className={tab === id ? 'active' : ''} key={id} onClick={() => setTab(id)}>{labels[id]}</button>)}{teacher && <button className="quick-create" onClick={() => setModal('post')}><Plus size={16}/> สร้างโพสต์</button>}</div>
+              <div className="content-tabs">{['stream', 'work', 'dashboard', 'people', 'messages', 'timeline'].map(id => <button className={tab === id ? 'active' : ''} key={id} onClick={() => id === 'messages' ? openChat(chatPeer) : setTab(id)}>{labels[id]}</button>)}{teacher && <button className="quick-create" onClick={() => setModal('post')}><Plus size={16}/> สร้างโพสต์</button>}</div>
               {tab === 'stream' && <Stream state={state} profile={profile} open={handleOpenPost} create={() => setModal('post')}/>}
               {tab === 'work' && <Work state={state} states={[]} courses={state?.course ? [state.course] : []} profile={profile} open={handleOpenPost} grade={handleGradeAssessment} create={() => setModal('post')}/>}
               {tab === 'dashboard' && <Dashboard key={cid} state={state} profile={profile} refresh={refresh} notify={notify} grade={setGrading}/>}
@@ -1095,7 +1126,6 @@ export default function App() {
                   </div>
                 );
               })()}
-              {tab === 'messages' && <Messages key={cid} state={state} profile={profile} notify={notify}/>}
               {tab === 'timeline' && <Timeline state={state} profile={profile} open={handleOpenPost}/>}
             </>}
           </div>

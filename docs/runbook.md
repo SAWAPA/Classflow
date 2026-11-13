@@ -67,6 +67,12 @@ python scripts/publish.py --allow-account 778655339518 --stack classflow-classro
 
 ทดลองเกณฑ์ใน Grade Lab ได้ทันที การเปลี่ยนแปลงไม่เผยแพร่ให้นักเรียน บันทึก config แล้วกดเผยแพร่เพื่อออก snapshot ผลใหม่ default null คือรอคะแนน; หากจะใช้ 0 ต้องเลือก policy ชัดเจน UI แสดง SD แบบประชากร
 
+## ข้อความส่วนตัว
+
+เมนูข้อความเป็นกล่องข้อความกลาง ไม่แยกห้องเรียน บทสนทนาครู–นักเรียนคู่เดิมรวมประวัติเก่าจากทุกห้องที่มีสิทธิ์เข้าถึง โดยเก็บข้อความเดิมไว้และบันทึกข้อความใหม่แยกตามคู่ผู้ใช้ รายชื่อเรียงตามข้อความล่าสุด มีจำนวนข้อความที่ยังไม่อ่านรายคนและที่เมนู/กระดิ่ง สถานะอ่านเก็บใน DynamoDB และยืนยันเฉพาะข้อความที่โหลดมาในแชทที่เปิดและหน้าต่างมีโฟกัส อัปเดตผ่าน polling ทุก 15 วินาทีขณะหน้าเว็บเปิดอยู่ ไม่ใช่ WebSocket หรือ push notification เมื่อปิด browser
+
+ทดสอบแชทผ่าน browser ในเครื่อง: ติดตั้ง Playwright พร้อม Microsoft Edge แล้วตั้ง `CLASSFLOW_SELF_HOST=1` และเรียก `node tests/chat-browser.mjs` หรือกำหนด `CLASSFLOW_PLAYWRIGHT` เป็น path ของแพ็กเกจที่มีอยู่ ชุดทดสอบเปิดเซิร์ฟเวอร์ demo ที่ 8031/5191 และปิดหลังจบ ภาพ desktop/mobile อยู่ใน `build/qa/`
+
 ## ตรวจค่าใช้จ่ายและ observability
 
 ดู Lambda Invocations/Duration/Errors/Throttles, API Gateway requests/4xx/5xx และ DynamoDB consumption แสดง CloudWatch log group ของสแตกใหม่ที่ retention 7 days หลีกเลี่ยง logging token/รหัสผ่าน/เนื้อหาข้อความ/ไฟล์
