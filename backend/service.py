@@ -267,6 +267,7 @@ class Classroom:
             course['teacherName'] = owner_profile.get('name') or course.get('teacherName', 'อาจารย์')
             names[owner_id] = course['teacherName']
         for post in posts:
+            post['version'] = post.get('_version', 0)
             post['authorName'] = names.get(post.get('authorId') or owner_id, post.get('authorName', 'อาจารย์'))
         for comment in rows:
             if comment.get('entity') == 'comment':
@@ -420,6 +421,20 @@ class Classroom:
                     raise ValueError('คะแนน Rubric รวมต้องเท่ากับคะแนนเต็ม')
                 post.update(dueAt=due.astimezone(dt.timezone.utc).isoformat().replace('+00:00', 'Z'), maxScore=maximum, rubric=rubric)
             return self.db.put(pk, 'POST#' + pid, post, expected=0)
+        if action == 'updatePost':
+            self.access(user, cid, True)
+            post = self.db.get(pk, 'POST#' + text(data.get('postId'), 64))
+            if not post:
+                raise ValueError('ไม่พบโพสต์')
+            if data.get('expectedVersion') != post['_version']:
+                raise ValueError('โพสต์เปลี่ยนแล้ว กรุณารีเฟรชก่อนบันทึก')
+            updated = {**post, 'title': text(data.get('title'), 150), 'description': text(data.get('description'), 8000, False), 'updatedAt': now()}
+            if post['kind'] == 'assignment' and 'dueAt' in data:
+                due = dt.datetime.fromisoformat(str(data['dueAt']).replace('Z', '+00:00'))
+                if due.tzinfo is None:
+                    raise ValueError('กำหนดส่งต้องมี timezone')
+                updated['dueAt'] = due.astimezone(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
+            return self.db.put(pk, 'POST#' + post['id'], updated, expected=post['_version'])
         if action == 'comment':
             post = self.db.get(pk, 'POST#' + text(data.get('postId'), 64))
             if not post:
@@ -558,6 +573,7 @@ class Classroom:
                 if len(post['files']) >= 5 and all(f['id'] != file['id'] for f in post['files']):
                     raise ValueError('แนบได้สูงสุด 5 ไฟล์ต่อโพสต์')
                 post['files'] = [f for f in post['files'] if f['id'] != file['id']] + [result]
+                post['updatedAt'] = now()
                 self.db.put(pk, 'POST#' + post['id'], post, expected=post['_version'])
             return result
         raise ValueError('ไม่รู้จักคำสั่งนี้')

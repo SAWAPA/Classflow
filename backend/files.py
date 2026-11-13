@@ -6,7 +6,8 @@ class S3Files:
     def __init__(self):
         import boto3
         from botocore.config import Config
-        self.s3 = boto3.client('s3', config=Config(signature_version='s3v4'))
+        region = os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION') or boto3.session.Session().region_name
+        self.s3 = boto3.client('s3', region_name=region, endpoint_url=f'https://s3.{region}.amazonaws.com' if region else None, config=Config(signature_version='s3v4', s3={'addressing_style': 'virtual'}))
         self.bucket = os.environ['UPLOAD_BUCKET']
 
     def prepare(self, file):

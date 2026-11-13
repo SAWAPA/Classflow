@@ -91,7 +91,7 @@ export function Stream({state, profile, open, create}) {
           </div>
           <div>
             <strong>{post.authorName}</strong>
-            <small>{date(post.createdAt)}</small>
+            <small>{date(post.createdAt)}{post.updatedAt && <> · แก้ไขล่าสุด {date(post.updatedAt)}</>}</small>
           </div>
           <Badge tone={post.kind === 'assignment' ? 'orange' : ''}>
             {post.kind === 'assignment' ? 'มอบหมายงาน' : 'เนื้อหา'}
