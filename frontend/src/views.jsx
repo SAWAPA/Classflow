@@ -311,6 +311,7 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
     : (courses.length ? courses : entries.map(e => e.course).filter(Boolean));
 
   const now = new Date();
+  const isTeacherRole = profile?.role === 'teacher' || (isSingleClass ? profile?.id === state?.course?.ownerId : entries.some(s => profile?.id === s?.course?.ownerId));
 
   // ดึงรายการงานที่ได้รับมอบหมายทั้งหมดจากห้องเรียนที่ระบุ (หากอยู่ในห้องเรียนเดี่ยว จะดึงเฉพาะห้องเรียนนั้น)
   const allAssignments = entries.flatMap(s => (s?.posts || [])
@@ -474,7 +475,7 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
           onClick={() => setActiveTab('pending')}
         >
           <Clock size={16}/>
-          <span>ยังไม่ส่ง</span>
+          <span>{isTeacherRole ? 'ยังไม่ตรวจ' : 'ยังไม่ส่ง'}</span>
           <span className="tab-counter pending">{pendingList.length}</span>
         </button>
 
@@ -494,7 +495,7 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
           onClick={() => setActiveTab('submitted')}
         >
           <CheckCircle2 size={16}/>
-          <span>ส่งแล้ว</span>
+          <span>{isTeacherRole ? 'ตรวจแล้ว' : 'ส่งแล้ว'}</span>
           <span className="tab-counter submitted">{submittedList.length}</span>
         </button>
       </div>
@@ -515,10 +516,18 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
                   </span>
 
                   {activeTab === 'pending' && (
-                    isDueSoon ? (
-                      <Badge tone="orange"><Clock size={11}/> ใกล้ถึงกำหนด</Badge>
+                    isTeacherRole ? (
+                      post.submittedCount > post.gradedCount ? (
+                        <Badge tone="orange"><Clock size={11}/> รอตรวจ ({post.submittedCount - post.gradedCount})</Badge>
+                      ) : (
+                        <Badge tone="gray"><Clock size={11}/> ยังไม่ตรวจ</Badge>
+                      )
                     ) : (
-                      <Badge tone="gray"><Clock size={11}/> ยังไม่ส่ง</Badge>
+                      isDueSoon ? (
+                        <Badge tone="orange"><Clock size={11}/> ใกล้ถึงกำหนด</Badge>
+                      ) : (
+                        <Badge tone="gray"><Clock size={11}/> ยังไม่ส่ง</Badge>
+                      )
                     )
                   )}
 
@@ -527,10 +536,14 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
                   )}
 
                   {activeTab === 'submitted' && (
-                    post.mine?.late ? (
-                      <Badge tone="orange"><CheckCircle2 size={11}/> ส่งช้า</Badge>
+                    isTeacherRole ? (
+                      <Badge><CheckCircle2 size={11}/> ตรวจแล้ว</Badge>
                     ) : (
-                      <Badge><CheckCircle2 size={11}/> ส่งแล้ว</Badge>
+                      post.mine?.late ? (
+                        <Badge tone="orange"><CheckCircle2 size={11}/> ส่งช้า</Badge>
+                      ) : (
+                        <Badge><CheckCircle2 size={11}/> ส่งแล้ว</Badge>
+                      )
                     )
                   )}
                 </div>
@@ -648,8 +661,8 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
             <>
               <CheckCircle2 size={42} className="icon-success"/>
               <div className="empty-text">
-                <h3>ไม่มีงานที่ค้างส่ง</h3>
-                <p>คุณส่งงานที่มอบหมายครบทั้งหมดแล้ว หรือยังไม่มีงานใหม่ในขณะนี้</p>
+                <h3>{isTeacherRole ? 'ไม่มีงานที่ยังไม่ตรวจ' : 'ไม่มีงานที่ค้างส่ง'}</h3>
+                <p>{isTeacherRole ? 'ตรวจงานครบทุกรายการแล้ว หรือยังไม่มีงานใหม่ในขณะนี้' : 'คุณส่งงานที่มอบหมายครบทั้งหมดแล้ว หรือยังไม่มีงานใหม่ในขณะนี้'}</p>
               </div>
             </>
           )}
@@ -658,7 +671,7 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
               <CheckCircle2 size={42} className="icon-success"/>
               <div className="empty-text">
                 <h3>ไม่มีงานที่เลยกำหนดส่ง</h3>
-                <p>ยอดเยี่ยมมาก! ไม่มีงานค้างส่งที่เกินกำหนดเวลา</p>
+                <p>{isTeacherRole ? 'ไม่มีงานที่เลยกำหนดส่งในขณะนี้' : 'ยอดเยี่ยมมาก! ไม่มีงานค้างส่งที่เกินกำหนดเวลา'}</p>
               </div>
             </>
           )}
@@ -666,8 +679,8 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
             <>
               <Clock size={42} className="icon-muted"/>
               <div className="empty-text">
-                <h3>ยังไม่มีงานที่ส่งแล้ว</h3>
-                <p>เมื่องานถูกส่งแล้ว ข้อมูลและผลคะแนนจะปรากฏในแถบนี้</p>
+                <h3>{isTeacherRole ? 'ยังไม่มีงานที่ตรวจแล้ว' : 'ยังไม่มีงานที่ส่งแล้ว'}</h3>
+                <p>{isTeacherRole ? 'เมื่องานได้รับการตรวจครบถ้วนแล้ว จะปรากฏในแถบนี้' : 'เมื่องานถูกส่งแล้ว ข้อมูลและผลคะแนนจะปรากฏในแถบนี้'}</p>
               </div>
             </>
           )}

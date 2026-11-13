@@ -1052,15 +1052,38 @@ export default function App() {
     ? (homeStates.find(s => s?.course?.id === grading.courseId) || state)
     : state;
   const currentGradingAssessment = grading?.assessment || grading;
-  const totalAssignmentsCount = state
-    ? state.posts.filter(p => p.kind === 'assignment').length
-    : homeStates.reduce((acc, s) => acc + (s?.posts?.filter(p => p.kind === 'assignment').length || 0), 0);
+  const pendingAssignmentsCount = useMemo(() => {
+    const list = state ? [state] : (homeStates.length ? homeStates : []);
+    const now = new Date();
+    let count = 0;
+    for (const s of list) {
+      if (!s?.posts) continue;
+      const isTeacher = profile?.role === 'teacher' || s?.course?.ownerId === profile?.id;
+      const submissions = s.submissions || [];
+      const gradebooks = s.gradebooks || {};
+      for (const p of s.posts) {
+        if (p.kind !== 'assignment') continue;
+        const dueDate = p.dueAt ? new Date(p.dueAt) : null;
+        const isOverdue = Boolean(dueDate && dueDate < now);
+        if (!isTeacher) {
+          const mine = submissions.some(sub => sub.postId === p.id && sub.userId === profile?.id);
+          if (!mine && !isOverdue) count++;
+        } else {
+          const submitted = submissions.filter(sub => sub.postId === p.id);
+          const graded = Object.keys(gradebooks[p.id] || {}).length;
+          const allGraded = submitted.length > 0 && submitted.length === graded;
+          if (!allGraded && !isOverdue) count++;
+        }
+      }
+    }
+    return count;
+  }, [state, homeStates, profile?.id, profile?.role]);
   return <>
     {toast && <div className="toast" role="status"><AlertCircle size={18}/><span>{toast}</span><button className="icon-btn" aria-label="ปิดแจ้งเตือน" onClick={() => setToast('')}><X size={16}/></button></div>}
     {!session ? <Auth onLogin={login} notify={notify}/> : !boot ? <div className="welcome-empty"><RefreshCw size={45}/><h1>{bootError ? 'เข้าสู่ระบบไม่สำเร็จ' : 'กำลังตรวจสอบสิทธิ์…'}</h1><p className="muted">{bootError || 'ระบบกำลังเลือกหน้าให้ตรงกับยศของคุณ'}</p>{bootError && <Btn onClick={() => bootstrap().catch(() => {})}>ลองใหม่</Btn>}</div> : profile?.role === 'admin' ? <AdminPanel profile={profile} logout={logout} notify={notify}/> : <div className="app-shell">
       <aside className="sidebar"><div className="brand"><span><Layers/></span>classflow<span className="brand-dot">.</span></div><div className="workspace-label">YOUR WORKSPACE</div>
         <ClassSelector cid={cid} courses={boot?.courses || []} onSelectCourse={openClass} onGoHome={goHome}/>
-        <nav>{navigation.map(([Icon, id]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => handleNav(id)}><Icon size={19}/>{labels[id]}{id === 'messages' && unreadMessages > 0 && <small aria-label={`${unreadMessages} ข้อความที่ยังไม่อ่าน`}>{unreadMessages}</small>}{id === 'work' && totalAssignmentsCount > 0 && <small>{totalAssignmentsCount}</small>}</button>)}</nav>
+        <nav>{navigation.map(([Icon, id]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => handleNav(id)}><Icon size={19}/>{labels[id]}{id === 'messages' && unreadMessages > 0 && <small aria-label={`${unreadMessages} ข้อความที่ยังไม่อ่าน`}>{unreadMessages}</small>}{id === 'work' && pendingAssignmentsCount > 0 && <small aria-label={`${pendingAssignmentsCount} ${teacher ? 'งานที่ยังไม่ตรวจ' : 'งานที่ยังไม่ส่ง'}`}>{pendingAssignmentsCount}</small>}</button>)}</nav>
         <div className="sidebar-bottom"><button className="side-add" onClick={() => setModal('class')}><Plus size={18}/>{teacher ? 'สร้างห้องเรียน' : 'เข้าร่วมห้องเรียน'}</button><button className="profile-button" onClick={() => setModal('profile')}><Avatar name={profile?.name || '?'} small/><div><strong>{profile?.name || 'กำลังโหลด…'}</strong><small>{teacher ? 'อาจารย์' : 'นักเรียน'}</small></div><Settings size={16}/></button><button className="side-logout" onClick={logout}><LogOut size={15}/>ออกจากระบบ</button></div>
       </aside>
       <main className="main-content">
