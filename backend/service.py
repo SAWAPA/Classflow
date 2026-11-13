@@ -335,7 +335,7 @@ class Classroom:
                 if pid not in contacts:
                     current = self.db.get('U#' + pid, 'PROFILE') or peer
                     contacts[pid] = {'peerId': pid, 'name': current.get('name', peer.get('name', 'สมาชิก')), 'studentId': current.get('studentId', ''), 'role': peer.get('role'), 'classes': []}
-                contacts[pid]['classes'].append({'id': cid, 'name': course['name'], 'studentUserId': pid if course['ownerId'] == uid else uid})
+                contacts[pid]['classes'].append({'id': cid, 'name': course['name'], 'subject': course.get('subject', ''), 'code': course.get('code', ''), 'studentUserId': pid if course['ownerId'] == uid else uid})
         return contacts
 
     def chat_history(self, uid, contact):
