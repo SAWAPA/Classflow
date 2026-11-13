@@ -102,7 +102,7 @@ class LocalFiles:
 
     def download(self, file, inline=False):
         token = secrets.token_urlsafe(32)
-        self.tickets[token] = {'file': file, 'expires': time.time() + 60, 'mode': 'download'}
+        self.tickets[token] = {'file': file, 'expires': time.time() + 60, 'mode': 'download', 'inline': inline}
         return 'http://127.0.0.1:' + os.environ.get('CLASSFLOW_LOCAL_PORT', '8000') + '/files/' + token
 
 
@@ -343,7 +343,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.cors()
             self.send_header('Content-Type', ticket['file']['mime'])
-            self.send_header('Content-Disposition', "attachment; filename*=UTF-8''" + quote(ticket['file']['filename']))
+            disposition = 'inline' if ticket.get('inline') else 'attachment'
+            self.send_header('Content-Disposition', disposition + "; filename*=UTF-8''" + quote(ticket['file']['filename']))
             self.send_header('Content-Length', str(len(content)))
             self.end_headers()
             self.wfile.write(content)

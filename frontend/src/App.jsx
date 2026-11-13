@@ -881,7 +881,9 @@ export default function App() {
     setHomeLoading(true);
     try {
       const results = await Promise.allSettled(boot.courses.map(course => rpc('getClass', {classId: course.id})));
-      setHomeStates(results.filter(r => r.status === 'fulfilled').map(r => r.value));
+      const snapshots = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+      setHomeStates(snapshots);
+      if (cid) {const current = snapshots.find(item => item.course.id === cid); if (current) setState(current);}
     }
     catch (error) {notify(error.message);}
     finally {setHomeLoading(false);}
@@ -945,7 +947,7 @@ export default function App() {
     const poll = () => {if (!document.hidden) loadHome();};
     const interval = setInterval(poll, 30000);
     return () => clearInterval(interval);
-  }, [boot?.profile?.id, boot?.courses]);
+  }, [boot?.profile?.id, boot?.courses, cid]);
   useEffect(() => {
     if (!cid) return;
     let stale = false;

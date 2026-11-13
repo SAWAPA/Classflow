@@ -20,4 +20,5 @@ class S3Files:
 
     def download(self, file, inline=False):
         return self.s3.generate_presigned_url('get_object', Params={'Bucket': self.bucket, 'Key': file['key'],
-             'ResponseContentDisposition': ("inline;" if inline else "attachment;") + " filename*=UTF-8''" + quote(file['filename'])}, ExpiresIn=60)
+             'ResponseContentType': file['mime'],
+             'ResponseContentDisposition': ("inline;" if inline else "attachment;") + " filename*=UTF-8''" + quote(file['filename'])}, ExpiresIn=300 if inline else 60)

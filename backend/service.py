@@ -256,7 +256,21 @@ class Classroom:
         teacher = course['ownerId'] == user['id']
         posts = sorted([r for r in rows if r.get('entity') == 'post'], key=lambda r: r['createdAt'], reverse=True)
         students = [r for r in rows if r.get('entity') == 'member']
+        names = {}
+        for student in students:
+            current_profile = self.db.get('U#' + student['userId'], 'PROFILE') or {}
+            student['name'] = current_profile.get('name') or student['name']
+            names[student['userId']] = student['name']
         owner_id = course.get('ownerId')
+        if owner_id:
+            owner_profile = self.db.get('U#' + owner_id, 'PROFILE') or {}
+            course['teacherName'] = owner_profile.get('name') or course.get('teacherName', 'อาจารย์')
+            names[owner_id] = course['teacherName']
+        for post in posts:
+            post['authorName'] = names.get(post.get('authorId') or owner_id, post.get('authorName', 'อาจารย์'))
+        for comment in rows:
+            if comment.get('entity') == 'comment':
+                comment['authorName'] = names.get(comment.get('authorId'), comment.get('authorName', 'สมาชิก'))
         if owner_id and not any(m.get('userId') == owner_id for m in students):
             teacher_profile = self.db.get('U#' + owner_id, 'PROFILE') or {}
             students.insert(0, {
@@ -272,6 +286,9 @@ class Classroom:
         publication = next((r for r in rows if r.get('entity') == 'publication'), None)
         if publication and not teacher:
             publication = {'publishedAt': publication['publishedAt'], 'rows': [r for r in publication['rows'] if r['userId'] == user['id']]}
+        if publication:
+            for row in publication['rows']:
+                row['name'] = names.get(row['userId'], row.get('name', 'นักเรียน'))
         if not teacher:
             course = {k: v for k, v in course.items() if k not in ('joinCode', 'grading')}
         course['version'] = course.get('_version', 0)
@@ -527,7 +544,10 @@ class Classroom:
             if action == 'downloadFile':
                 if file['status'] != 'ready':
                     raise ValueError('ไฟล์ยังไม่พร้อม')
-                return {'url': self.files.download(file, inline=bool(data.get('inline')))}
+                inline = bool(data.get('inline'))
+                if inline and file.get('mime') not in ('application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'):
+                    raise ValueError('รองรับตัวอย่างไฟล์รูปภาพและ PDF เท่านั้น')
+                return {'url': self.files.download(file, inline=inline)}
             if file['ownerId'] != uid:
                 raise PermissionError('ยืนยันได้เฉพาะไฟล์ของตนเอง')
             self.files.verify(file)

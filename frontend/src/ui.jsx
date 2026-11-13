@@ -1,4 +1,5 @@
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
+import {createPortal} from 'react-dom';
 import {FileText, Download, X, Upload, BookOpen, Eye} from 'lucide-react';
 import {ACCEPT, openFile, rpc} from './api';
 export const date = v => v ? new Date(v).toLocaleString('th-TH', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'}) : '—';
@@ -7,7 +8,10 @@ export function Btn({children, icon: Icon, secondary, className = '', ...props})
 export function Badge({children, tone = ''}) {return <span className={`badge ${tone}`}>{children}</span>;}
 export function Avatar({name = '?', small}) {return <span className={`avatar ${small ? 'small' : ''}`}>{name.slice(0, 1)}</span>;}
 export function Empty({children, icon: Icon = BookOpen}) {return <div className="empty"><Icon size={30}/><p>{children}</p></div>;}
-export function Modal({title, children, close, wide}) {return <div className="overlay" onMouseDown={e => {if (close && e.target === e.currentTarget) close();}}><section className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}><div className="modal-head"><h2>{title}</h2>{close && <button className="icon-btn" aria-label="ปิด" onClick={close}><X/></button>}</div>{children}</section></div>;}
+export function Modal({title, children, close, wide}) {
+  useEffect(() => {const previous = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => {document.body.style.overflow = previous;};}, []);
+  return createPortal(<div className="overlay" onMouseDown={e => {if (close && e.target === e.currentTarget) close();}}><section className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}><div className="modal-head"><h2>{title}</h2>{close && <button type="button" className="icon-btn" aria-label="ปิด" onClick={close}><X/></button>}</div>{children}</section></div>, document.body);
+}
 export function Field({label, ...props}) {return <label className="field">{label}<input {...props}/></label>;}
 function previewKind(file) {
   const extension = String(file.filename || '').toLowerCase().split('.').pop();

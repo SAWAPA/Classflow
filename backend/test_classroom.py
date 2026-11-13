@@ -120,13 +120,19 @@ class ClassroomTests(unittest.TestCase):
         self.assertTrue(all(s['files'] == [] for s in submissions))
 
     def test_profile_name_changes_propagate_to_class_members_and_teacher_name(self):
+        self.run_action(self.students[0], 'comment', postId=self.post['id'], text='Question')
+        self.run_action(self.teacher, 'publishGrades')
         self.app.run(self.teacher, 'updateProfile', {'name': 'New Teacher', 'studentId': ''})
         teacher_view = self.run_action(self.students[0], 'getClass')
         self.assertEqual(teacher_view['course']['teacherName'], 'New Teacher')
+        self.assertEqual(teacher_view['posts'][0]['authorName'], 'New Teacher')
         self.app.run(self.students[0], 'updateProfile', {'name': 'Renamed Student', 'studentId': '001'})
         student_view = self.run_action(self.teacher, 'getClass')
         renamed = next(member for member in student_view['members'] if member['userId'] == 's1')
         self.assertEqual(renamed['name'], 'Renamed Student')
+        self.assertEqual(student_view['comments'][0]['authorName'], 'Renamed Student')
+        published = next(row for row in student_view['publication']['rows'] if row['userId'] == 's1')
+        self.assertEqual(published['name'], 'Renamed Student')
 
     def test_import_rejects_duplicates_and_unknowns(self):
         for rows in [[{'studentId': '001', 'score': 90}, {'studentId': '001', 'score': 80}], [{'studentId': '999', 'score': 70}]]:
@@ -147,6 +153,7 @@ class ClassroomTests(unittest.TestCase):
         fid = prepared['file']['id']
         self.run_action(self.students[0], 'completeUpload', fileId=fid)
         with self.assertRaises(PermissionError): self.run_action(self.students[1], 'downloadFile', fileId=fid)
+        with self.assertRaises(PermissionError): self.run_action(self.students[1], 'downloadFile', fileId=fid, inline=True)
         with self.assertRaises(PermissionError): self.run_action(self.students[1], 'submit', postId=self.post['id'], fileIds=[fid])
         self.assertTrue(self.run_action(self.teacher, 'downloadFile', fileId=fid)['url'])
         self.run_action(self.students[0], 'submit', postId=self.post['id'], fileIds=[fid])
