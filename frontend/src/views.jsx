@@ -482,7 +482,16 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
         </div>
       ) : (
         <div className="empty-assignments">
-          {activeTab === 'pending' && (
+          {searchQuery.trim() && (
+            <>
+              <Search size={42} className="icon-muted"/>
+              <div className="empty-text">
+                <h3>ไม่พบงานที่ค้นหา</h3>
+                <p>ไม่พบงานที่ตรงกับ “{searchQuery.trim()}” ในแถบนี้ ลองเปลี่ยนคำค้นหาหรือเลือกแถบสถานะอื่น</p>
+              </div>
+            </>
+          )}
+          {!searchQuery.trim() && activeTab === 'pending' && (
             <>
               <CheckCircle2 size={42} className="icon-success"/>
               <div className="empty-text">
@@ -491,7 +500,7 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
               </div>
             </>
           )}
-          {activeTab === 'overdue' && (
+          {!searchQuery.trim() && activeTab === 'overdue' && (
             <>
               <CheckCircle2 size={42} className="icon-success"/>
               <div className="empty-text">
@@ -500,7 +509,7 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
               </div>
             </>
           )}
-          {activeTab === 'submitted' && (
+          {!searchQuery.trim() && activeTab === 'submitted' && (
             <>
               <Clock size={42} className="icon-muted"/>
               <div className="empty-text">
