@@ -1,7 +1,7 @@
 import {useEffect, useState, useMemo, useRef} from 'react';
-import {BookOpen, ClipboardList, CalendarDays, Clock, ArrowUpRight, ChevronRight, ChevronDown, Check, Layers, Plus, MessageCircle, Paperclip, RefreshCw, Send, AlertCircle, CheckCircle2, Filter, Search, X, Megaphone, FileText} from 'lucide-react';
+import {BookOpen, ClipboardList, CalendarDays, Clock, ArrowUpRight, ChevronRight, ChevronDown, Check, Layers, Plus, MessageCircle, Paperclip, RefreshCw, Send, AlertCircle, CheckCircle2, Filter, Search, X, Megaphone, FileText, Edit3} from 'lucide-react';
 import {rpc} from './api';
-import {Avatar, Badge, Btn, Empty, date} from './ui';
+import {Avatar, Badge, Btn, Empty, date, fullDate} from './ui';
 
 export function Stream({state, profile, open, create}) {
   const teacher = profile.id === state.course.ownerId, assignments = state.posts.filter(p => p.kind === 'assignment');
@@ -89,13 +89,36 @@ export function Stream({state, profile, open, create}) {
           <div className={`post-symbol ${post.kind}`}>
             {post.kind === 'assignment' ? <ClipboardList size={21}/> : <BookOpen size={21}/>}
           </div>
-          <div>
+          <div className="post-author-info">
             <strong>{post.authorName}</strong>
-            <small>{date(post.createdAt)}{post.updatedAt && <> · แก้ไขล่าสุด {date(post.updatedAt)}</>}</small>
+            <div className="post-timestamps-row">
+              <small>โพสต์เมื่อ {date(post.createdAt)}</small>
+              {post.updatedAt && (
+                <span className="post-edited-indicator" title={`แก้ไขล่าสุดเมื่อ ${fullDate(post.updatedAt)}`}>
+                  <Edit3 size={11}/> (แก้ไขแล้วเมื่อ {date(post.updatedAt)})
+                </span>
+              )}
+            </div>
           </div>
-          <Badge tone={post.kind === 'assignment' ? 'orange' : ''}>
-            {post.kind === 'assignment' ? 'มอบหมายงาน' : 'เนื้อหา'}
-          </Badge>
+          <div className="post-author-badges">
+            <Badge tone={post.kind === 'assignment' ? 'orange' : ''}>
+              {post.kind === 'assignment' ? 'มอบหมายงาน' : 'เนื้อหา'}
+            </Badge>
+            {teacher && (
+              <button
+                type="button"
+                className="post-card-edit-btn"
+                title="แก้ไขรายละเอียดโพสต์นี้"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  open(post, undefined, true);
+                }}
+              >
+                <Edit3 size={13}/>
+                <span>แก้ไข</span>
+              </button>
+            )}
+          </div>
         </div>
         <button className="post-open" onClick={() => open(post)}>
           <h3>{post.title}</h3>
@@ -528,6 +551,12 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
                     <ClipboardList size={14}/>
                     <span>คะแนนเต็ม: {post.maxScore || 100} คะแนน</span>
                   </div>
+                  {post.updatedAt && (
+                    <div className="assignment-meta-item edited" title={`แก้ไขล่าสุดเมื่อ ${fullDate(post.updatedAt)}`}>
+                      <Edit3 size={13}/>
+                      <span>แก้ไขแล้วเมื่อ: {date(post.updatedAt)}</span>
+                    </div>
+                  )}
                   {activeTab === 'submitted' && post.mine && (
                     <div className="assignment-meta-item success">
                       <CheckCircle2 size={14}/>
@@ -573,9 +602,20 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
                   </button>
 
                   {post.isTeacher ? (
-                    <Btn secondary onClick={() => grade(post, post.courseId)}>
-                      ตรวจงาน ({post.submittedCount})
-                    </Btn>
+                    <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                      <button
+                        type="button"
+                        className="text-btn"
+                        onClick={() => open(post, post.courseId, true)}
+                        title="แก้ไขรายละเอียดงานนี้"
+                        style={{display: 'inline-flex', alignItems: 'center', gap: '4px'}}
+                      >
+                        <Edit3 size={13}/> แก้ไข
+                      </button>
+                      <Btn secondary onClick={() => grade(post, post.courseId)}>
+                        ตรวจงาน ({post.submittedCount})
+                      </Btn>
+                    </div>
                   ) : (
                     <Btn
                       secondary={activeTab === 'submitted'}
@@ -752,6 +792,7 @@ export function Timeline({state, states = [], courses = [], profile, open}) {
                 <h3>{p.title}</h3>
                 <p>
                   {p.maxScore} คะแนน · {p.isTeacher ? `ส่งแล้ว ${p.submittedCount} คน` : p.mine ? (p.mine.late ? 'ส่งช้า' : 'ส่งแล้ว') : (p.isPast ? 'เลยกำหนดส่ง' : 'ยังไม่ส่ง')}
+                  {p.updatedAt && <span style={{marginLeft: '8px', color: '#16645b', fontWeight: '500'}}>· แก้ไขแล้ว</span>}
                 </p>
               </div>
               <ArrowUpRight size={18}/>

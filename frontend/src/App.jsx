@@ -980,9 +980,9 @@ export default function App() {
       setTab(id);
     }
   }
-  function handleOpenPost(post, courseId) {
+  function handleOpenPost(post, courseId, editMode = false) {
     const targetCourseId = courseId || post?.courseId || post?.course?.id || cid;
-    setDetail({id: post.id, courseId: targetCourseId});
+    setDetail({id: post.id, courseId: targetCourseId, editMode});
   }
   function handleGradeAssessment(assessment, courseId) {
     const targetCourseId = courseId || assessment?.courseId || assessment?.course?.id || cid;
@@ -1158,7 +1158,7 @@ export default function App() {
     {modal === 'profile' && profile && <Profile profile={profile} close={() => setModal(null)} done={async () => {await bootstrap(); await refresh();}} notify={notify}/>}
     {modal === 'role' && profile && !profile.roleSelected && <RoleModal profile={profile} close={() => setModal(null)} done={async () => {await bootstrap(); await refresh();}} notify={notify} canClose={false}/>}
     {modal === 'post' && <PostForm classId={cid || boot?.courses?.[0]?.id} close={() => setModal(null)} done={async () => {if (cid) await refresh(); await loadHome();}} notify={notify}/>}
-    {current && activeDetailCourse && <PostDetail post={current} state={activeDetailCourse} profile={profile} close={() => setDetail(null)} refresh={async () => {if (cid) await refresh(); await loadHome();}} notify={notify}/>}
+    {current && activeDetailCourse && <PostDetail post={current} state={activeDetailCourse} profile={profile} initialEdit={Boolean(detail?.editMode)} close={() => setDetail(null)} refresh={async () => {if (cid) await refresh(); await loadHome();}} notify={notify}/>}
     {grading && activeGradingCourse && <Grading assessment={currentGradingAssessment} state={activeGradingCourse} close={() => setGrading(null)} refresh={async () => {if (cid) await refresh(); await loadHome();}} notify={notify}/>}
   </>;
 }

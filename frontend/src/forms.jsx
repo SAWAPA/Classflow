@@ -1,7 +1,7 @@
 import {useState} from 'react';
-import {Layers, Sparkles, ArrowUpRight, GraduationCap, Plus, BookOpen, ClipboardList, X, Paperclip, Upload, Send, Check, Users} from 'lucide-react';
+import {Layers, Sparkles, ArrowUpRight, GraduationCap, Plus, BookOpen, ClipboardList, X, Paperclip, Upload, Send, Check, Users, Edit3, Clock, Trash2} from 'lucide-react';
 import {rpc, cognito, config, isLocal, uploadFile, getGoogleAuthUrl} from './api';
-import {Btn, Badge, Avatar, Modal, Field, Files, FilePicker, Empty, date, num} from './ui';
+import {Btn, Badge, Avatar, Modal, Field, Files, FilePicker, SelectedFilesList, Empty, date, fullDate, num} from './ui';
 
 export function Auth({onLogin, notify}) {
   const [mode, setMode] = useState('signin'), [busy, setBusy] = useState(false), [form, setForm] = useState({email: '', password: '', name: '', code: ''}), [showRealForm, setShowRealForm] = useState(false), [showAllStudents, setShowAllStudents] = useState(false);
@@ -56,44 +56,312 @@ export function RoleModal({profile, done, close, notify, canClose = false}) {
 }
 export function PostForm({classId, close, done, notify}) {
   const [kind, setKind] = useState('assignment'), [rubric, setRubric] = useState([]), [files, setFiles] = useState([]), [busy, setBusy] = useState(false);
+
+  function handleAddFiles(newFiles) {
+    setFiles(prev => {
+      const combined = [...prev];
+      let exceeded = false;
+      for (const f of newFiles) {
+        if (combined.length >= 5) {
+          exceeded = true;
+          break;
+        }
+        if (!combined.some(item => item.name === f.name && item.size === f.size)) {
+          combined.push(f);
+        }
+      }
+      if (exceeded || prev.length + newFiles.length > 5) {
+        notify('แนบไฟล์ได้สูงสุด 5 ไฟล์ต่อโพสต์');
+      }
+      return combined;
+    });
+  }
+
+  function handleRemoveFile(index) {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  }
+
   async function submit(e) {
     e.preventDefault(); setBusy(true);
-    try {const form = Object.fromEntries(new FormData(e.target)); const post = await rpc('createPost', {classId, ...form, kind, rubric, dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : undefined});
-      try {for (const file of files) await uploadFile(classId, post.id, 'post', file);} catch (error) {notify('โพสต์ถูกสร้างแล้ว แต่ไฟล์บางไฟล์ไม่สำเร็จ: ' + error.message); await done(); close(); return;}
+    try {
+      const form = Object.fromEntries(new FormData(e.target));
+      const post = await rpc('createPost', {classId, ...form, kind, rubric, dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : undefined});
+      try {for (const file of files) await uploadFile(classId, post.id, 'post', file);}
+      catch (error) {notify('โพสต์ถูกสร้างแล้ว แต่ไฟล์บางไฟล์ไม่สำเร็จ: ' + error.message); await done(); close(); return;}
       await done(); close(); notify(kind === 'assignment' ? 'มอบหมายงานแล้ว' : 'เผยแพร่เนื้อหาแล้ว');
     } catch (error) {notify(error.message);} finally {setBusy(false);}
   }
-  return <Modal title="แบ่งปันกับชั้นเรียน" close={close} wide><form onSubmit={submit}><div className="segmented"><button type="button" className={kind === 'assignment' ? 'active' : ''} onClick={() => setKind('assignment')}><ClipboardList size={16}/> มอบหมายงาน</button><button type="button" className={kind === 'material' ? 'active' : ''} onClick={() => setKind('material')}><BookOpen size={16}/> เนื้อหาการเรียน</button></div><Field label="หัวข้อ" name="title" maxLength={150} required/><label className="field">รายละเอียด<textarea name="description" rows={4} maxLength={8000}/></label>{kind === 'assignment' && <><div className="form-row"><Field label="กำหนดส่ง" name="dueAt" type="datetime-local" required/><Field label="คะแนนเต็ม" name="maxScore" type="number" min={1} max={1000} step="any" defaultValue={100} required/></div><div className="section-title"><h3>เกณฑ์ให้คะแนน (Rubric)</h3><button type="button" className="text-btn" onClick={() => setRubric([...rubric, {title: '', max: 10}])} disabled={rubric.length >= 12}><Plus size={15}/> เพิ่มหัวข้อ</button></div>{rubric.map((r, i) => <div className="rubric-row" key={i}><input aria-label={`Rubric หัวข้อ ${i + 1}`} placeholder="เช่น ความถูกต้องของเนื้อหา" required value={r.title} onChange={e => setRubric(rubric.map((v, j) => j === i ? {...v, title: e.target.value} : v))}/><input type="number" aria-label={`Rubric คะแนน ${i + 1}`} min={1} max={1000} required value={r.max} onChange={e => setRubric(rubric.map((v, j) => j === i ? {...v, max: Number(e.target.value)} : v))}/><button type="button" className="icon-btn" aria-label="ลบหัวข้อ Rubric" onClick={() => setRubric(rubric.filter((_, j) => j !== i))}><X size={16}/></button></div>)}{rubric.length > 0 && <small className="muted">รวม {rubric.reduce((s, r) => s + Number(r.max), 0)} คะแนน · ต้องเท่ากับคะแนนเต็ม</small>}</>}<section className="post-attachment-section" aria-label="แนบไฟล์"><h3><Paperclip size={18}/>แนบไฟล์</h3><FilePicker onChange={setFiles}/>{files.map(f => <div className="selected-file" key={f.name}><Paperclip size={14}/>{f.name}</div>)}</section><div className="modal-actions"><Btn secondary type="button" onClick={close}>ยกเลิก</Btn><Btn disabled={busy}>{busy ? 'กำลังเผยแพร่…' : 'เผยแพร่ให้ชั้นเรียน'}<ArrowUpRight size={16}/></Btn></div></form></Modal>;
+  return <Modal title="แบ่งปันกับชั้นเรียน" close={busy ? undefined : close} wide><form onSubmit={submit}><div className="segmented"><button type="button" className={kind === 'assignment' ? 'active' : ''} onClick={() => setKind('assignment')}><ClipboardList size={16}/> มอบหมายงาน</button><button type="button" className={kind === 'material' ? 'active' : ''} onClick={() => setKind('material')}><BookOpen size={16}/> เนื้อหาการเรียน</button></div><Field label="หัวข้อ" name="title" maxLength={150} required/><label className="field">รายละเอียด<textarea name="description" rows={4} maxLength={8000}/></label>{kind === 'assignment' && <><div className="form-row"><Field label="กำหนดส่ง" name="dueAt" type="datetime-local" required/><Field label="คะแนนเต็ม" name="maxScore" type="number" min={1} max={1000} step="any" defaultValue={100} required/></div><div className="section-title"><h3>เกณฑ์ให้คะแนน (Rubric)</h3><button type="button" className="text-btn" onClick={() => setRubric([...rubric, {title: '', max: 10}])} disabled={rubric.length >= 12}><Plus size={15}/> เพิ่มหัวข้อ</button></div>{rubric.map((r, i) => <div className="rubric-row" key={i}><input aria-label={`Rubric หัวข้อ ${i + 1}`} placeholder="เช่น ความถูกต้องของเนื้อหา" required value={r.title} onChange={e => setRubric(rubric.map((v, j) => j === i ? {...v, title: e.target.value} : v))}/><input type="number" aria-label={`Rubric คะแนน ${i + 1}`} min={1} max={1000} required value={r.max} onChange={e => setRubric(rubric.map((v, j) => j === i ? {...v, max: Number(e.target.value)} : v))}/><button type="button" className="icon-btn" aria-label="ลบหัวข้อ Rubric" onClick={() => setRubric(rubric.filter((_, j) => j !== i))}><X size={16}/></button></div>)}{rubric.length > 0 && <small className="muted">รวม {rubric.reduce((s, r) => s + Number(r.max), 0)} คะแนน · ต้องเท่ากับคะแนนเต็ม</small>}</>}<section className="post-attachment-section" aria-label="แนบไฟล์"><div className="attachment-section-header"><h3><Paperclip size={18}/>แนบไฟล์</h3><span className="attachment-counter">{files.length} / 5 ไฟล์</span></div>{files.length < 5 && <FilePicker onChange={handleAddFiles} disabled={busy || files.length >= 5}/>}<SelectedFilesList files={files} onRemove={handleRemoveFile} disabled={busy}/></section><div className="modal-actions"><Btn secondary type="button" disabled={busy} onClick={close}>ยกเลิก</Btn><Btn disabled={busy}>{busy ? 'กำลังเผยแพร่…' : 'เผยแพร่ให้ชั้นเรียน'}<ArrowUpRight size={16}/></Btn></div></form></Modal>;
 }
 function CommentBox({post, state, notify, refresh}) {
   const comments = state.comments.filter(c => c.postId === post.id), [value, setValue] = useState('');
   return <div className="comments">{comments.map(c => <div className="comment" key={c.id}><Avatar name={c.authorName} small/><div><strong>{c.authorName}<small>{date(c.createdAt)}</small></strong><p>{c.text}</p></div></div>)}<form className="inline-form" onSubmit={async e => {e.preventDefault(); try {await rpc('comment', {classId: state.course.id, postId: post.id, text: value}); setValue(''); await refresh();} catch (err) {notify(err.message);}}}><input value={value} onChange={e => setValue(e.target.value)} placeholder="แบ่งปันความคิดเห็นกับชั้นเรียน…" maxLength={2000} required aria-label="ความคิดเห็น"/><button className="icon-btn" aria-label="ส่งความคิดเห็น"><Send size={18}/></button></form></div>;
 }
-function EditPost({post, classId, close, refresh, notify}) {
-  const [files, setFiles] = useState([]), [busy, setBusy] = useState(false), [version, setVersion] = useState(post.version);
+export function EditPost({post, classId, close, refresh, notify}) {
+  const [existingFiles, setExistingFiles] = useState(post.files || []);
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(post.version);
+
+  const totalFilesCount = existingFiles.length + files.length;
+
+  function handleAddFiles(newFiles) {
+    setFiles(prev => {
+      const combined = [...prev];
+      let exceeded = false;
+      for (const f of newFiles) {
+        if (existingFiles.length + combined.length >= 5) {
+          exceeded = true;
+          break;
+        }
+        if (!combined.some(item => item.name === f.name && item.size === f.size)) {
+          combined.push(f);
+        }
+      }
+      if (exceeded || existingFiles.length + prev.length + newFiles.length > 5) {
+        notify('แนบไฟล์รวมได้สูงสุด 5 ไฟล์ต่อโพสต์');
+      }
+      return combined;
+    });
+  }
+
+  function handleRemoveNewFile(index) {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function handleRemoveExistingFile(fileId) {
+    setExistingFiles(prev => prev.filter(f => f.id !== fileId));
+  }
+
   async function save(e) {
     e.preventDefault();
     if (busy) return;
-    if ((post.files?.length || 0) + files.length > 5) return notify('แนบไฟล์รวมได้สูงสุด 5 ไฟล์ต่อโพสต์');
+    if (totalFilesCount > 5) return notify('แนบไฟล์รวมได้สูงสุด 5 ไฟล์ต่อโพสต์');
     setBusy(true);
     try {
       const form = Object.fromEntries(new FormData(e.target));
-      await rpc('updatePost', {classId, postId: post.id, ...form, ...(form.dueAt ? {dueAt: new Date(form.dueAt).toISOString()} : {}), expectedVersion: version});
+      await rpc('updatePost', {
+        classId,
+        postId: post.id,
+        ...form,
+        ...(form.dueAt ? {dueAt: new Date(form.dueAt).toISOString()} : {}),
+        fileIds: existingFiles.map(f => f.id),
+        expectedVersion: version
+      });
       let remaining = [...files];
-      try {for (const file of files) {await uploadFile(classId, post.id, 'post', file); remaining = remaining.slice(1);}}
-      catch (error) {notify('บันทึกข้อความแล้ว แต่มีไฟล์อัปโหลดไม่สำเร็จ: ' + error.message); setFiles(remaining); await refresh(); const current = await rpc('getClass', {classId}); setVersion(current.posts.find(p => p.id === post.id)?.version); return;}
-      await refresh(); notify('แก้ไขโพสต์แล้ว'); close();
-    } catch (error) {notify(error.message);} finally {setBusy(false);}
+      try {
+        for (const file of files) {
+          await uploadFile(classId, post.id, 'post', file);
+          remaining = remaining.slice(1);
+        }
+      } catch (error) {
+        notify('บันทึกข้อความแล้ว แต่มีไฟล์อัปโหลดไม่สำเร็จ: ' + error.message);
+        setFiles(remaining);
+        await refresh();
+        const current = await rpc('getClass', {classId});
+        setVersion(current.posts.find(p => p.id === post.id)?.version);
+        return;
+      }
+      await refresh();
+      notify('แก้ไขโพสต์และบันทึกรายละเอียดเรียบร้อยแล้ว');
+      close();
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
   }
+
   const localDue = post.dueAt ? new Date(new Date(post.dueAt).getTime() - new Date(post.dueAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
-  return <Modal title="แก้ไขโพสต์" close={busy ? undefined : close} wide><form onSubmit={save}><Field label="หัวข้อ" name="title" defaultValue={post.title} required maxLength={150}/><label className="field">รายละเอียด<textarea name="description" defaultValue={post.description} rows={5} maxLength={8000}/></label>{post.kind === 'assignment' && <Field label="กำหนดส่ง" name="dueAt" type="datetime-local" defaultValue={localDue} required/>}<p className="muted">ไฟล์แนบเดิม {post.files?.length || 0} / 5 ไฟล์</p><Files files={post.files} classId={classId} notify={notify}/><FilePicker onChange={setFiles}/>{files.map((file, index) => <div className="selected-file" key={index}>{file.name}<button type="button" className="icon-btn" aria-label={`ยกเลิกแนบ ${file.name}`} disabled={busy} onClick={() => setFiles(files.filter((_, i) => i !== index))}><X size={14}/></button></div>)}<div className="modal-actions"><Btn type="button" secondary disabled={busy} onClick={close}>ยกเลิก</Btn><Btn icon={Check} disabled={busy}>{busy ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}</Btn></div></form></Modal>;
+
+  return (
+    <Modal title="แก้ไขรายละเอียดโพสต์" close={busy ? undefined : close} wide>
+      <form onSubmit={save}>
+        <Field label="หัวข้อ" name="title" defaultValue={post.title} required maxLength={150}/>
+        <label className="field">
+          รายละเอียด
+          <textarea name="description" defaultValue={post.description} rows={5} maxLength={8000}/>
+        </label>
+        {post.kind === 'assignment' && (
+          <Field label="กำหนดส่ง" name="dueAt" type="datetime-local" defaultValue={localDue} required/>
+        )}
+        
+        <section className="post-attachment-section" style={{marginTop: '18px', paddingTop: '16px'}}>
+          <div className="attachment-section-header">
+            <h3><Paperclip size={18}/>จัดการไฟล์แนบ</h3>
+            <span className="attachment-counter">{totalFilesCount} / 5 ไฟล์</span>
+          </div>
+
+          {existingFiles.length > 0 && (
+            <div style={{marginBottom: '14px'}}>
+              <p className="muted" style={{fontSize: '12px', margin: '0 0 8px 0'}}>
+                ไฟล์แนบเดิม ({existingFiles.length} ไฟล์):
+              </p>
+              <Files files={existingFiles} classId={classId} notify={notify} onRemove={handleRemoveExistingFile} disabled={busy}/>
+            </div>
+          )}
+
+          {totalFilesCount < 5 && (
+            <FilePicker onChange={handleAddFiles} disabled={busy || totalFilesCount >= 5}/>
+          )}
+
+          <SelectedFilesList files={files} onRemove={handleRemoveNewFile} disabled={busy}/>
+        </section>
+
+        <div className="modal-actions">
+          <Btn type="button" secondary disabled={busy} onClick={close}>ยกเลิก</Btn>
+          <Btn icon={Check} disabled={busy}>{busy ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}</Btn>
+        </div>
+      </form>
+    </Modal>
+  );
 }
-export function PostDetail({post, state, profile, close, refresh, notify}) {
-  const [editing, setEditing] = useState(false);
-  const teacher = profile.id === state.course.ownerId, [files, setFiles] = useState([]), [busy, setBusy] = useState(false);
-  const mine = state.submissions.find(s => s.postId === post.id && s.userId === profile.id), grade = state.gradebooks[post.id]?.[profile.id];
-  if (editing && teacher) return <EditPost post={post} classId={state.course.id} close={() => setEditing(false)} refresh={refresh} notify={notify}/>;
-  return <Modal title={post.title} close={close} wide><div className="post-meta"><Badge tone={post.kind === 'assignment' ? 'orange' : ''}>{post.kind === 'assignment' ? 'งานที่มอบหมาย' : 'เนื้อหาการเรียน'}</Badge>{post.dueAt && <span>{date(post.dueAt)} · {post.maxScore} คะแนน</span>}</div><div className="section-title"><small className="muted">{post.updatedAt ? `แก้ไขล่าสุด ${date(post.updatedAt)}` : `โพสต์เมื่อ ${date(post.createdAt)}`}</small>{teacher && <Btn secondary onClick={() => setEditing(true)}>แก้ไขโพสต์ / เพิ่มไฟล์</Btn>}</div><p className="body-text">{post.description}</p><Files files={post.files} classId={state.course.id} notify={notify}/>{post.rubric?.length > 0 && <div className="rubric-preview"><h4>เกณฑ์การประเมิน</h4>{post.rubric.map(r => <div key={r.id}><span>{r.title}</span><strong>{r.max} คะแนน</strong></div>)}</div>}{!teacher && post.kind === 'assignment' && <section className="submission-panel"><div className="section-title"><h3>งานของฉัน</h3>{mine ? <Badge tone={mine.late ? 'orange' : ''}>{mine.late ? 'ส่งช้า' : 'ส่งแล้ว'} · ครั้งที่ {mine.revision}</Badge> : <Badge tone="orange">ยังไม่ส่ง</Badge>}</div>{mine && <><p className="muted">ส่งเมื่อ {date(mine.submittedAt)}</p><Files files={mine.files} classId={state.course.id} notify={notify}/></>}{grade && <div className="grade-feedback"><strong>{grade.score} / {post.maxScore} คะแนน</strong><p>{grade.feedback}</p></div>}<form onSubmit={async e => {e.preventDefault(); setBusy(true); try {const uploaded = []; for (const f of files) uploaded.push(await uploadFile(state.course.id, post.id, 'submission', f)); await rpc('submit', {classId: state.course.id, postId: post.id, fileIds: uploaded.map(f => f.id), comment: new FormData(e.target).get('comment')}); await refresh(); notify('ส่งงานสำเร็จแล้ว'); close();} catch (error) {notify(error.message);} finally {setBusy(false);}}}><FilePicker onChange={setFiles}/>{files.map(f => <small className="selected-file" key={f.name}>{f.name}</small>)}<Field label="หมายเหตุถึงครู" name="comment" maxLength={2000}/>{new Date(post.dueAt) < new Date() && <p className="notice">เกินกำหนดแล้ว ระบบรับงานและบันทึกสถานะส่งช้า</p>}<Btn disabled={busy || !files.length} icon={Upload}>{busy ? 'กำลังส่งงาน…' : mine ? 'ส่งงานฉบับใหม่' : 'ส่งงาน'}</Btn></form></section>}<CommentBox post={post} state={state} notify={notify} refresh={refresh}/></Modal>;
+
+export function PostDetail({post, state, profile, close, refresh, notify, initialEdit = false}) {
+  const [editing, setEditing] = useState(initialEdit);
+  const teacher = profile.id === state.course.ownerId;
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const mine = state.submissions.find(s => s.postId === post.id && s.userId === profile.id);
+  const grade = state.gradebooks[post.id]?.[profile.id];
+
+  if (editing && teacher) {
+    return <EditPost post={post} classId={state.course.id} close={() => setEditing(false)} refresh={refresh} notify={notify}/>;
+  }
+
+  function handleAddSubmitFiles(newFiles) {
+    setFiles(prev => {
+      const combined = [...prev];
+      let exceeded = false;
+      for (const f of newFiles) {
+        if (combined.length >= 5) {
+          exceeded = true;
+          break;
+        }
+        if (!combined.some(item => item.name === f.name && item.size === f.size)) {
+          combined.push(f);
+        }
+      }
+      if (exceeded || prev.length + newFiles.length > 5) {
+        notify('แนบงานได้สูงสุด 5 ไฟล์');
+      }
+      return combined;
+    });
+  }
+
+  function handleRemoveSubmitFile(index) {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  }
+
+  return (
+    <Modal title={post.title} close={close} wide>
+      <div className="post-meta">
+        <Badge tone={post.kind === 'assignment' ? 'orange' : ''}>
+          {post.kind === 'assignment' ? 'งานที่มอบหมาย' : 'เนื้อหาการเรียน'}
+        </Badge>
+        {post.dueAt && <span>กำหนดส่ง: {date(post.dueAt)} · {post.maxScore} คะแนน</span>}
+      </div>
+
+      <div className="post-detail-header-row">
+        <div className="post-detail-timestamps">
+          <span className="post-time-line">
+            <Clock size={13}/>
+            <span>โพสต์เมื่อ: {fullDate(post.createdAt)}</span>
+          </span>
+          {post.updatedAt && (
+            <span className="post-edited-indicator" title={`แก้ไขล่าสุดเมื่อ ${fullDate(post.updatedAt)}`}>
+              <Edit3 size={13}/>
+              <span>(แก้ไขแล้วเมื่อ {fullDate(post.updatedAt)})</span>
+            </span>
+          )}
+        </div>
+        {teacher && (
+          <Btn secondary icon={Edit3} onClick={() => setEditing(true)}>
+            แก้ไขรายละเอียด / จัดการไฟล์
+          </Btn>
+        )}
+      </div>
+
+      <p className="body-text" style={{whiteSpace: 'pre-wrap'}}>{post.description}</p>
+      
+      {post.files?.length > 0 && (
+        <div style={{margin: '18px 0'}}>
+          <strong style={{fontSize: '12.5px', color: 'var(--ink)', display: 'block', marginBottom: '8px'}}>
+            ไฟล์แนบ ({post.files.length} ไฟล์):
+          </strong>
+          <Files files={post.files} classId={state.course.id} notify={notify}/>
+        </div>
+      )}
+
+      {post.rubric?.length > 0 && (
+        <div className="rubric-preview">
+          <h4>เกณฑ์การประเมิน</h4>
+          {post.rubric.map(r => (
+            <div key={r.id}>
+              <span>{r.title}</span>
+              <strong>{r.max} คะแนน</strong>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!teacher && post.kind === 'assignment' && (
+        <section className="submission-panel">
+          <div className="section-title">
+            <h3>งานของฉัน</h3>
+            {mine ? (
+              <Badge tone={mine.late ? 'orange' : ''}>
+                {mine.late ? 'ส่งช้า' : 'ส่งแล้ว'} · ครั้งที่ {mine.revision}
+              </Badge>
+            ) : (
+              <Badge tone="orange">ยังไม่ส่ง</Badge>
+            )}
+          </div>
+          {mine && (
+            <>
+              <p className="muted">ส่งเมื่อ {fullDate(mine.submittedAt)}</p>
+              <Files files={mine.files} classId={state.course.id} notify={notify}/>
+            </>
+          )}
+          {grade && (
+            <div className="grade-feedback">
+              <strong>{grade.score} / {post.maxScore} คะแนน</strong>
+              <p>{grade.feedback}</p>
+            </div>
+          )}
+          <form onSubmit={async e => {
+            e.preventDefault();
+            setBusy(true);
+            try {
+              const uploaded = [];
+              for (const f of files) uploaded.push(await uploadFile(state.course.id, post.id, 'submission', f));
+              await rpc('submit', {classId: state.course.id, postId: post.id, fileIds: uploaded.map(f => f.id), comment: new FormData(e.target).get('comment')});
+              await refresh();
+              notify('ส่งงานสำเร็จแล้ว');
+              close();
+            } catch (error) {
+              notify(error.message);
+            } finally {
+              setBusy(false);
+            }
+          }}>
+            <div className="attachment-section-header" style={{marginBottom: '6px'}}>
+              <strong style={{fontSize: '12.5px'}}>แนบไฟล์งาน ({files.length}/5)</strong>
+            </div>
+            {files.length < 5 && <FilePicker onChange={handleAddSubmitFiles} disabled={busy || files.length >= 5}/>}
+            <SelectedFilesList files={files} onRemove={handleRemoveSubmitFile} disabled={busy}/>
+            <Field label="หมายเหตุถึงครู" name="comment" maxLength={2000}/>
+            {new Date(post.dueAt) < new Date() && <p className="notice">เกินกำหนดแล้ว ระบบรับงานและบันทึกสถานะส่งช้า</p>}
+            <Btn disabled={busy || !files.length} icon={Upload}>
+              {busy ? 'กำลังส่งงาน…' : mine ? 'ส่งงานฉบับใหม่' : 'ส่งงาน'}
+            </Btn>
+          </form>
+        </section>
+      )}
+
+      <CommentBox post={post} state={state} notify={notify} refresh={refresh}/>
+    </Modal>
+  );
 }
 export function Grading({assessment, state, close, refresh, notify}) {
   const students = state.members.filter(m => m.role === 'student');

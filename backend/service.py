@@ -525,6 +525,9 @@ class Classroom:
                 if due.tzinfo is None:
                     raise ValueError('กำหนดส่งต้องมี timezone')
                 updated['dueAt'] = due.astimezone(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
+            if 'fileIds' in data:
+                fids = set(data.get('fileIds') or [])
+                updated['files'] = [f for f in post.get('files', []) if f['id'] in fids]
             return self.db.put(pk, 'POST#' + post['id'], updated, expected=post['_version'])
         if action == 'comment':
             post = self.db.get(pk, 'POST#' + text(data.get('postId'), 64))
