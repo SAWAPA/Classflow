@@ -230,7 +230,7 @@ function NotificationBell({homeStates = [], conversations = [], onOpenChat, prof
   );
 }
 
-function CourseSearch({courses = [], homeStates = [], state = null, cid = '', onSelectCourse, onOpenPost, notify}) {
+function CourseSearch({courses = [], homeStates = [], state = null, cid = '', profile = null, onSelectCourse, onOpenPost, notify}) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('all'); // 'all' | 'courses' | 'assignments' | 'materials' | 'files'
@@ -250,25 +250,83 @@ function CourseSearch({courses = [], homeStates = [], state = null, cid = '', on
     return list;
   }, [homeStates, state]);
 
-  // ดึงรายการงานที่มอบหมายทั้งหมด (Assignments)
+  // ดึงรายการงานที่มอบหมายทั้งหมด (Assignments) พร้อมสถานะการส่งงาน
   const allAssignments = useMemo(() => {
     const list = [];
+    const now = new Date();
     allStates.forEach(s => {
       if (!s) return;
       const course = s.course || courses.find(c => c?.id === s?.course?.id) || {id: s?.courseId || s?.id, name: 'ห้องเรียน'};
+      const isTeacher = profile?.role === 'teacher' || course.ownerId === profile?.id;
+      const submissions = s.submissions || [];
+      const gradebooks = s.gradebooks || {};
+
       (s.posts || []).forEach(p => {
         if (!p) return;
         if (p.kind === 'assignment') {
+          const mine = submissions.find(sub => sub.postId === p.id && sub.userId === profile?.id);
+          const submittedCount = submissions.filter(sub => sub.postId === p.id).length;
+          const gradedCount = Object.keys(gradebooks[p.id] || {}).length;
+          const dueDate = p.dueAt ? new Date(p.dueAt) : null;
+          const isOverdue = Boolean(dueDate && dueDate < now);
+
+          let status = 'unsubmitted';
+          let statusLabel = 'ยังไม่ส่ง';
+          let statusTone = 'orange'; // 'orange' | 'green' | 'red' | 'amber' | 'gray'
+
+          if (!isTeacher) {
+            if (mine) {
+              status = mine.late ? 'late' : 'submitted';
+              statusLabel = mine.late ? 'ส่งแล้ว (ส่งช้า)' : 'ส่งแล้ว';
+              statusTone = mine.late ? 'amber' : 'green';
+            } else if (isOverdue) {
+              status = 'overdue';
+              statusLabel = 'ยังไม่ส่ง (เลยกำหนด)';
+              statusTone = 'red';
+            } else {
+              status = 'unsubmitted';
+              statusLabel = 'ยังไม่ส่ง';
+              statusTone = 'orange';
+            }
+          } else {
+            // บทบาทอาจารย์
+            const allGraded = submittedCount > 0 && submittedCount === gradedCount;
+            if (allGraded) {
+              status = 'graded';
+              statusLabel = 'ตรวจแล้ว';
+              statusTone = 'green';
+            } else if (submittedCount > gradedCount) {
+              status = 'pending_grading';
+              statusLabel = `รอตรวจ (${submittedCount - gradedCount})`;
+              statusTone = 'amber';
+            } else if (isOverdue) {
+              status = 'overdue';
+              statusLabel = 'เลยกำหนดส่ง';
+              statusTone = 'red';
+            } else {
+              status = 'unsubmitted';
+              statusLabel = 'ยังไม่ตรวจ';
+              statusTone = 'gray';
+            }
+          }
+
           list.push({
             ...p,
             course,
-            courseId: course.id || s?.course?.id
+            courseId: course.id || s?.course?.id,
+            mine,
+            isTeacher,
+            isOverdue,
+            status,
+            statusLabel,
+            statusTone,
+            isPending: !isTeacher ? !mine : (status !== 'graded')
           });
         }
       });
     });
     return list;
-  }, [allStates, courses]);
+  }, [allStates, courses, profile]);
 
   // ดึงรายการประกาศและเนื้อหาทั้งหมด (Materials / Announcements)
   const allMaterials = useMemo(() => {
@@ -379,13 +437,26 @@ function CourseSearch({courses = [], homeStates = [], state = null, cid = '', on
   const matchedAssignments = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return allAssignments.filter(a => {
+    const filtered = allAssignments.filter(a => {
       const title = (a.title || '').toLowerCase();
       const desc = (a.description || '').toLowerCase();
       const courseName = (a.course?.name || '').toLowerCase();
       const subject = (a.course?.subject || '').toLowerCase();
       const author = (a.authorName || '').toLowerCase();
       return title.includes(q) || desc.includes(q) || courseName.includes(q) || subject.includes(q) || author.includes(q);
+    });
+
+    // เรียงลำดับ: งานที่ยังไม่ส่ง (isPending = true) แสดงขึ้นมาก่อนงานที่ส่งแล้ว
+    return filtered.sort((a, b) => {
+      if (a.isPending !== b.isPending) {
+        return a.isPending ? -1 : 1;
+      }
+      if (a.dueAt && b.dueAt) {
+        return new Date(a.dueAt) - new Date(b.dueAt);
+      }
+      if (a.dueAt && !b.dueAt) return -1;
+      if (!a.dueAt && b.dueAt) return 1;
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
     });
   }, [query, allAssignments]);
 
@@ -633,23 +704,25 @@ function CourseSearch({courses = [], homeStates = [], state = null, cid = '', on
                     {matchedAssignments.map(a => (
                       <div
                         key={`a-${a.courseId}-${a.id}`}
-                        className="top-search-item"
+                        className={`top-search-item ${a.isPending ? 'is-pending' : 'is-submitted'}`}
                         onClick={() => handleSelectPost(a, a.courseId)}
                       >
-                        <div className="search-item-icon assignment">
-                          <ClipboardList size={16}/>
+                        <div className={`search-item-icon assignment ${a.isPending ? 'pending' : 'submitted'}`}>
+                          {a.isPending ? <Clock size={16}/> : <CheckCircle2 size={16}/>}
                         </div>
                         <div className="search-item-info">
                           <div className="search-item-topline">
                             <strong className="search-item-title">{a.title}</strong>
-                            <span className="search-type-badge assignment">งานที่มอบหมาย</span>
+                            <span className={`search-status-tag ${a.statusTone}`}>
+                              {a.statusLabel}
+                            </span>
                           </div>
                           <div className="search-item-meta">
                             <span className="search-item-course-tag">
                               <BookOpen size={11}/> {a.course?.name || 'ห้องเรียน'}
                             </span>
                             {a.dueAt && (
-                              <span>
+                              <span className={a.isOverdue && a.isPending ? 'search-meta-overdue' : ''}>
                                 <Clock size={11}/> ครบกำหนด {date(a.dueAt)}
                               </span>
                             )}
@@ -1088,7 +1161,7 @@ export default function App() {
       </aside>
       <main className="main-content">
         {isLocal && <div className="local-banner"><span/>โหมดสาธิตในเครื่อง · ข้อมูลตัวอย่าง · ยังไม่ deploy ระบบใหม่บน AWS</div>}
-        <header className="topbar"><div className="breadcrumb">{tab === 'messages' ? <>Classflow<ChevronRight size={14}/><strong>ข้อความส่วนตัว</strong></> : !cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><CourseSearch courses={boot?.courses || []} homeStates={homeStates} state={state} cid={cid} onSelectCourse={openClass} onOpenPost={handleOpenPost} notify={notify}/><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><NotificationBell conversations={conversations} onOpenChat={openChat} homeStates={homeStates} profile={profile} teacher={teacher} onOpenPost={handleOpenPost} onGradeAssessment={handleGradeAssessment}/><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
+        <header className="topbar"><div className="breadcrumb">{tab === 'messages' ? <>Classflow<ChevronRight size={14}/><strong>ข้อความส่วนตัว</strong></> : !cid && tab === 'home' ? <>Classflow<ChevronRight size={14}/><strong>หน้าหลัก</strong></> : !cid ? <>Classflow<ChevronRight size={14}/><span>ห้องเรียนทั้งหมด</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></> : <><span>ห้องเรียนของฉัน</span><ChevronRight size={14}/><span>{state?.course?.name || 'กำลังโหลด…'}</span><ChevronRight size={14}/><strong>{labels[tab]}</strong></>}</div><div className="topbar-right"><CourseSearch courses={boot?.courses || []} homeStates={homeStates} state={state} cid={cid} profile={profile} onSelectCourse={openClass} onOpenPost={handleOpenPost} notify={notify}/><span className="pill" style={{padding:'6px 12px', fontSize:'11px', display:'inline-flex', alignItems:'center', gap:'5px', borderColor:'#267768', color:'#1e776b', background:'#eaf5ee'}}>บทบาท: {teacher ? 'อาจารย์ 🎓' : 'นักเรียน 🎒'}</span><span>{new Date().toLocaleDateString('th-TH', {day: 'numeric', month: 'long', year: 'numeric'})}</span><NotificationBell conversations={conversations} onOpenChat={openChat} homeStates={homeStates} profile={profile} teacher={teacher} onOpenPost={handleOpenPost} onGradeAssessment={handleGradeAssessment}/><button className="icon-btn" aria-label="รีเฟรชห้องเรียน" onClick={() => tab === 'home' || !cid ? loadHome() : refresh().catch(e => notify(e.message))}><RefreshCw size={17}/></button><Avatar name={profile?.name || '?'} small/></div></header>
         <div className="page-content">
           <div key={cid ? `${cid}-${tab}` : tab} className="tab-pane">
             {tab === 'messages' ? (

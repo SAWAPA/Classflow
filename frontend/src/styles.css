@@ -208,6 +208,20 @@
 .search-type-badge.file {background:#eeecf9;color:#5346a8;}
 .search-type-badge.sub-file {background:#fbf0ea;color:#a84e2a;}
 
+.search-status-tag {font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:5px;flex-shrink:0;display:inline-flex;align-items:center;gap:3px;letter-spacing:0.2px;}
+.search-status-tag.orange {background:#fef3e6;color:#c0671f;border:1px solid #fbd8b5;}
+.search-status-tag.green {background:#e8f7ee;color:#1a7858;border:1px solid #c2e9d2;}
+.search-status-tag.red {background:#fef0ef;color:#c93b3b;border:1px solid #fed2d0;}
+.search-status-tag.amber {background:#fff8eb;color:#b45309;border:1px solid #fed7aa;}
+.search-status-tag.gray {background:#f1f5f4;color:#55736d;border:1px solid #dce5e2;}
+
+.search-item-icon.assignment.pending {background:#fef3e6;color:#c0671f;}
+.search-item-icon.assignment.submitted {background:#e8f7ee;color:#1a7858;}
+.top-search-item:hover .search-item-icon.assignment.pending {background:#c0671f;color:white;}
+.top-search-item:hover .search-item-icon.assignment.submitted {background:#1a7858;color:white;}
+
+.search-meta-overdue {color:#c93b3b !important;font-weight:600;}
+
 .search-item-meta {display:flex;align-items:center;gap:7px;font-size:10px;color:#7b9490;flex-wrap:wrap;}
 .search-item-course-tag {display:inline-flex;align-items:center;gap:3px;background:#eef6f3;color:#226a60;padding:1px 6px;border-radius:4px;font-weight:600;font-size:9.5px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .search-item-teacher {display:inline-flex;align-items:center;gap:4px;color:#2c6e64;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;}
