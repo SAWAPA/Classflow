@@ -70,7 +70,7 @@ await student.getByRole('button', {name: /เปิดห้องเรีย�
 await student.getByRole('heading',{name:'Cloud Computing & Virtualization'}).waitFor();
 await student.screenshot({path:path.join(out,'student-mobile.png'),fullPage:true});
 await student.getByRole('button',{name:'คะแนนและเกรด',exact:true}).last().click();
-await student.getByRole('heading',{name:'ทุกคะแนน คือก้าวต่อไป'}).waitFor();
+await student.getByRole('heading',{name:'คะแนนของคุณ'}).waitFor();
 assert.equal(await student.getByText('ธนกร ใจดี',{exact:true}).count(),0);
 assert.equal(await student.getByRole('button',{name:'Export Excel',exact:true}).count(),0);
 assert.deepEqual(errors,[]);

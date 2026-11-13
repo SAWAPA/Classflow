@@ -158,9 +158,9 @@
 
 /* Topbar Search & Dropdown */
 .top-search-wrapper {position:relative;display:flex;align-items:center;}
-.top-search-bar {display:flex;align-items:center;gap:8px;background:#f6faf8;border:1px solid #dbe6e3;border-radius:20px;padding:6px 14px;width:220px;transition:all 0.22s cubic-bezier(0.16, 1, 0.3, 1);}
+.top-search-bar {display:flex;align-items:center;gap:8px;background:#f6faf8;border:1px solid #dbe6e3;border-radius:20px;padding:6px 14px;width:250px;transition:all 0.22s cubic-bezier(0.16, 1, 0.3, 1);}
 .top-search-bar:hover {background:#ffffff;border-color:#bcd4cd;box-shadow:0 2px 8px rgba(23, 107, 101, 0.06);}
-.top-search-bar.focused, .top-search-bar:focus-within {background:#ffffff;border-color:#1e776b;width:270px;box-shadow:0 0 0 3px rgba(30, 119, 107, 0.12), 0 3px 10px rgba(0, 0, 0, 0.04);}
+.top-search-bar.focused, .top-search-bar:focus-within {background:#ffffff;border-color:#1e776b;width:300px;box-shadow:0 0 0 3px rgba(30, 119, 107, 0.12), 0 3px 10px rgba(0, 0, 0, 0.04);}
 .top-search-icon {color:#7b9490;flex-shrink:0;transition:color 0.15s ease;}
 .top-search-bar.focused .top-search-icon, .top-search-bar:focus-within .top-search-icon {color:#1e776b;}
 .top-search-bar input {border:0;background:transparent;padding:0;font-size:11px;color:#214340;width:100%;outline:none;}
@@ -180,7 +180,7 @@
 .top-search-item:hover .search-item-title {color:#176b65;}
 .search-item-meta {display:flex;align-items:center;gap:8px;font-size:10px;color:#7b9490;}
 .search-item-teacher {display:inline-flex;align-items:center;gap:4px;color:#2c6e64;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;}
-.search-item-subject {background:#eef5f2;padding:1px 6px;border-radius:4px;font-size:9px;color:#557873;}
+.search-item-subject {background:#eef6f3;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:600;color:#206a5f;}
 .search-item-arrow {color:#9cb2ae;flex-shrink:0;transition:transform 0.15s ease, color 0.15s ease;}
 .top-search-item:hover .search-item-arrow {color:#176b65;transform:translateX(2px);}
 .top-search-empty {padding:30px 18px;text-align:center;color:#93a8a5;font-size:11px;}

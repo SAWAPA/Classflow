@@ -235,11 +235,31 @@ function CourseSearch({courses = [], onSelectCourse}) {
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
+    const cleanQ = q.replace(/[\s\-_]/g, '');
+
     return courses.filter(c => {
       const name = (c.name || '').toLowerCase();
       const teacher = (c.teacherName || '').toLowerCase();
       const subject = (c.subject || '').toLowerCase();
-      return name.includes(q) || teacher.includes(q) || subject.includes(q);
+      const code = (c.code || c.courseCode || c.joinCode || '').toLowerCase();
+      const desc = (c.description || '').toLowerCase();
+
+      // ค้นหาแบบตรงตัว
+      if (name.includes(q) || teacher.includes(q) || subject.includes(q) || code.includes(q) || desc.includes(q)) {
+        return true;
+      }
+
+      // ค้นหาแบบ Normalized ตัดช่องว่างและเครื่องหมายขีด (เช่น ค้นหารหัสวิชา 01418214 จาก 01418214-65)
+      if (cleanQ) {
+        const cleanName = name.replace(/[\s\-_]/g, '');
+        const cleanSubject = subject.replace(/[\s\-_]/g, '');
+        const cleanCode = code.replace(/[\s\-_]/g, '');
+        if (cleanName.includes(cleanQ) || cleanSubject.includes(cleanQ) || cleanCode.includes(cleanQ)) {
+          return true;
+        }
+      }
+
+      return false;
     });
   }, [query, courses]);
 
@@ -267,7 +287,7 @@ function CourseSearch({courses = [], onSelectCourse}) {
         <Search size={15} className="top-search-icon"/>
         <input
           type="text"
-          placeholder="ค้นหาวิชา หรืออาจารย์…"
+          placeholder="ค้นหาชื่อวิชา, รหัสวิชา, หรืออาจารย์…"
           value={query}
           onChange={e => {
             setQuery(e.target.value);
@@ -283,7 +303,7 @@ function CourseSearch({courses = [], onSelectCourse}) {
               setOpen(false);
             }
           }}
-          aria-label="ค้นหารายวิชาและอาจารย์"
+          aria-label="ค้นหารายวิชา รหัสวิชา และอาจารย์"
         />
         {query && (
           <button
@@ -320,14 +340,14 @@ function CourseSearch({courses = [], onSelectCourse}) {
                   <div className="search-item-info">
                     <strong className="search-item-title">{course.name}</strong>
                     <div className="search-item-meta">
+                      {course.subject && (
+                        <span className="search-item-subject">
+                          รหัสวิชา: {course.subject}
+                        </span>
+                      )}
                       {course.teacherName && (
                         <span className="search-item-teacher">
                           <Users size={12}/> อาจารย์ {course.teacherName}
-                        </span>
-                      )}
-                      {course.subject && (
-                        <span className="search-item-subject">
-                          {course.subject}
                         </span>
                       )}
                     </div>
@@ -338,7 +358,7 @@ function CourseSearch({courses = [], onSelectCourse}) {
             ) : (
               <div className="top-search-empty">
                 <Search size={22}/>
-                <p>ไม่พบรายวิชาหรืออาจารย์ที่ตรงกับ <strong>"{query}"</strong></p>
+                <p>ไม่พบรายวิชา รหัสวิชา หรืออาจารย์ที่ตรงกับ <strong>"{query}"</strong></p>
               </div>
             )}
           </div>
