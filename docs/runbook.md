@@ -6,18 +6,15 @@
 
 API local: http://127.0.0.1:8000, frontend: http://127.0.0.1:5173
 
-## Build และ test
+## Build และ package
 
 ```powershell
-python -X utf8 -m unittest discover -s backend -v
 cd frontend
 npm ci
 npm run build
 cd ..
 python -X utf8 scripts/package.py
 ```
-
-Playwright integration: ติดตั้ง playwright ตาม environment หรือกำหนด CLASSFLOW_PLAYWRIGHT เป็น path ของแพ็กเกจที่มีอยู่ จาก root ใช้ node tests/browser.mjs เลือก browser msedge โดยค่าเริ่มต้น ตั้ง CLASSFLOW_SELF_HOST=1 เพื่อให้ชุดทดสอบเปิด API/Vite เองที่ 8010/5180 และปิดหลังจบ ภาพและ Excel fixtures อยู่ build/qa/
 
 ตรวจ deployment ที่ติดตั้งปัจจุบันโดยไม่ส่ง credentials: python scripts/check_public.py ตรวจหน้าเว็บ assets/config/security headers, API ต้องตอบ 401 เมื่อไม่มี token และ S3 private origin ต้องตอบ 403 เมื่อเข้าตรง แก้ endpoint ในสคริปต์เมื่อสร้างสแตกใหม่
 
@@ -52,7 +49,7 @@ python scripts/publish.py --allow-account 778655339518 --stack classflow-classro
 
 ## GitHub Actions สำหรับ Deploy อัตโนมัติ
 
-เมื่อ commit และ push การเปลี่ยนใด ๆ เข้า branch `main`, workflow `deploy.yml` จะรัน test, build, package และ deploy ทั้ง Frontend, Backend และ Infrastructure ของ stack `classflow-classroom` อัตโนมัติ
+เมื่อ commit และ push การเปลี่ยนใด ๆ เข้า branch `main`, workflow `deploy.yml` จะรัน build, package, ตรวจ CloudFormation และ deploy ทั้ง Frontend, Backend และ Infrastructure ของ stack `classflow-classroom` อัตโนมัติ
 
 ตั้ง Repository secrets `AWS_ACCESS_KEY_ID` และ `AWS_SECRET_ACCESS_KEY` ของ IAM user สำหรับ GitHub Actions และตั้ง Repository variable `AWS_ACCOUNT_ID=778655339518` ก่อนใช้งาน ไม่เก็บ AWS access key หรือ password ใน repository (GitHub จะเก็บ secret แบบเข้ารหัส) บัญชี AWS Free นี้ยังไม่เปิด advanced features จึงยังใช้ OIDC ไม่ได้โดยไม่ upgrade บัญชี ควรปิดหรือลบ access key/user หลัง demo
 

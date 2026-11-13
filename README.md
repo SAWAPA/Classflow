@@ -60,14 +60,11 @@ npm run dev
 ## ตรวจสอบ
 
 ```powershell
-python -X utf8 -m unittest discover -s backend -v
 cd frontend
 npm run build
 cd ..
 python -X utf8 scripts/package.py
 ```
-
-tests/browser.mjs ทดสอบ workflow บน Chromium/Edge พร้อมภาพใน build/qa/ ต้องมี Playwright และ browser ที่รองรับ ดู docs/runbook.md
 
 ## Deploy AWS
 
