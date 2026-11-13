@@ -44,17 +44,18 @@ await page.screenshot({path: path.join(out, 'grade-simulation.png'), fullPage: t
 const downloadEvent = page.waitForEvent('download'); await page.getByRole('button', {name: 'Export Excel', exact: true}).click();
 const download = await downloadEvent; const reportPath = path.join(out, 'export-report.xlsx'); await download.saveAs(reportPath);
 const report = new Excel.Workbook(); await report.xlsx.readFile(reportPath);
-assert.equal(report.getWorksheet('Grades').rowCount, 9);
 assert.equal(report.getWorksheet('Statistics').getCell('B5').value > 0, true);
 const response = await fetch(`http://127.0.0.1:${apiPort}/rpc`, {method: 'POST', headers: {'Content-Type':'application/json', Authorization:'Bearer dev:teacher-demo'}, body:JSON.stringify({action:'bootstrap'})});
 const {data:boot} = await response.json();
 const stateResponse = await fetch(`http://127.0.0.1:${apiPort}/rpc`, {method:'POST', headers:{'Content-Type':'application/json',Authorization:'Bearer dev:teacher-demo'},body:JSON.stringify({action:'getClass',data:{classId:boot.courses[0].id}})});
 const {data:state} = await stateResponse.json();
+const studentCount = state.members.filter(member => member.role === 'student').length;
+assert.equal(report.getWorksheet('Grades').rowCount, studentCount + 1);
 const workbook = new Excel.Workbook(), sheet=workbook.addWorksheet('Scores'); sheet.addRow(['studentId','name','score']); state.members.filter(m=>m.role==='student').forEach(m=>sheet.addRow([m.studentId,m.name,82]));
 const importPath = path.join(out,'import-fixture.xlsx'); await workbook.xlsx.writeFile(importPath);
-await page.getByLabel('Import Excel', {exact:true}).setInputFiles(importPath);
+await page.getByLabel('นำเข้าคะแนน', {exact:true}).setInputFiles(importPath);
 await page.getByRole('heading', {name:/ตรวจสอบก่อนนำเข้า/}).waitFor();
-assert.equal(await page.getByText('พร้อมนำเข้า',{exact:true}).count(),8);
+assert.equal(await page.getByText('พร้อมนำเข้า',{exact:true}).count(),studentCount);
 await page.getByRole('button',{name:'ปิดตัวอย่างนำเข้า'}).click();
 // Separate tab identity, genuine backend isolation: students get only their own grades.
 const studentContext=await browser.newContext({viewport:{width:390,height:844}}); const student=await studentContext.newPage(); student.on('pageerror',e=>errors.push(e.message));

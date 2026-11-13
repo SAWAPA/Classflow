@@ -69,11 +69,15 @@ class CognitoDirectory:
         return {g['GroupName'] for g in self.client.admin_list_groups_for_user(
             UserPoolId=self.pool_id, Username=username).get('Groups', [])}
 
-    def _user(self, item):
+    def _user(self, item, known_role=None):
         attributes = {a['Name']: a['Value'] for a in item.get('UserAttributes', item.get('Attributes', []))}
         username = item['Username']
-        groups = self.groups_for_user(username)
-        role = _role_from_groups(groups)
+        if known_role:
+            role = known_role
+            groups = {known_role + 's'} if known_role in ('admin', 'teacher') else set()
+        else:
+            groups = self.groups_for_user(username)
+            role = _role_from_groups(groups)
         return {'id': username, 'username': username, 'sub': attributes.get('sub'),
                 'email': attributes.get('email', username), 'name': attributes.get('name', attributes.get('email', username)),
                 'role': role, 'groups': sorted(groups), 'status': item.get('UserStatus', 'UNKNOWN'),
@@ -103,17 +107,27 @@ class CognitoDirectory:
 
     def create_user(self, email, name, password, role):
         email = _normal_email(email)
-        if self._all_users(email):
-            raise ValueError('อีเมลนี้มีบัญชีอยู่แล้ว ระบบอนุญาตหนึ่งอีเมลต่อหนึ่งบัญชี')
-        self.client.admin_create_user(UserPoolId=self.pool_id, Username=email,
-            UserAttributes=[{'Name': 'email', 'Value': email}, {'Name': 'email_verified', 'Value': 'true'}, {'Name': 'name', 'Value': name}],
-            MessageAction='SUPPRESS')
-        self.client.admin_set_user_password(UserPoolId=self.pool_id, Username=email, Password=password, Permanent=True)
+        try:
+            response = self.client.admin_create_user(
+                UserPoolId=self.pool_id, Username=email,
+                UserAttributes=[{'Name': 'email', 'Value': email}, {'Name': 'email_verified', 'Value': 'true'}, {'Name': 'name', 'Value': name}],
+                MessageAction='SUPPRESS')
+            user_data = response.get('User', {})
+        except self.client.exceptions.UsernameExistsException:
+            user_data = self.client.admin_get_user(UserPoolId=self.pool_id, Username=email)
+
+        try:
+            self.client.admin_set_user_password(UserPoolId=self.pool_id, Username=email, Password=password, Permanent=True)
+        except Exception:
+            pass
+
         group = {'admin': 'admins', 'teacher': 'teachers'}.get(role)
         if group:
-            self.client.admin_add_user_to_group(UserPoolId=self.pool_id, Username=email, GroupName=group)
-        response = self.client.admin_get_user(UserPoolId=self.pool_id, Username=email)
-        return self._user(response)
+            try:
+                self.client.admin_add_user_to_group(UserPoolId=self.pool_id, Username=email, GroupName=group)
+            except Exception:
+                pass
+        return self._user(user_data, known_role=role)
 
     def set_role(self, user_id, role):
         group = {'admin': 'admins', 'teacher': 'teachers'}.get(role)

@@ -1,5 +1,5 @@
-import {ArrowUpRight, BookOpen, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Clock, FileText, Megaphone, RefreshCw, Users} from 'lucide-react';
-import {Avatar, Badge, Btn, date} from './ui';
+import {ArrowUpRight, BookOpen, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Clock, FileText, Megaphone, Users} from 'lucide-react';
+import {Badge, date} from './ui';
 
 const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -25,7 +25,7 @@ function assignmentSummary(entry, profile, teacher) {
     .filter(Boolean);
 }
 
-export default function HomeDashboard({courses = [], states = [], profile, teacher, onOpen, onRefresh, loading}) {
+export default function HomeDashboard({courses = [], states = [], profile, teacher, onOpen}) {
   const entries = courses.map(course => ({course, snapshot: states.find(item => item?.course?.id === course.id)}));
   const assignments = entries.flatMap(entry => assignmentSummary(entry, profile, teacher));
   const updates = entries.flatMap(entry => (entry.snapshot?.posts || []).map(post => ({...post, course: entry.course, courseId: entry.course.id})))
@@ -40,7 +40,6 @@ export default function HomeDashboard({courses = [], states = [], profile, teach
         <h1>ยินดีต้อนรับ {profile?.name || 'กลับมาเรียนรู้ด้วยกัน'}</h1>
         <p>เลือกห้องเรียนเพื่อเข้าสู่เนื้อหา งาน และความคืบหน้า หรือเริ่มจากสิ่งที่ต้องทำวันนี้</p>
       </div>
-      <Btn secondary icon={RefreshCw} onClick={onRefresh} disabled={loading}>{loading ? 'กำลังรีเฟรช…' : 'รีเฟรชหน้าแรก'}</Btn>
     </section>
 
     <div className="home-stats">

@@ -60,8 +60,12 @@ class DynamoStore:
         return self.unpack(response['Item']) if 'Item' in response else None
 
     def list(self, pk, prefix=''):
-        params = dict(TableName=self.table, KeyConditionExpression='PK = :pk AND begins_with(SK, :prefix)',
-                      ExpressionAttributeValues={':pk': {'S': pk}, ':prefix': {'S': prefix}}, ConsistentRead=True)
+        if prefix:
+            params = dict(TableName=self.table, KeyConditionExpression='PK = :pk AND begins_with(SK, :prefix)',
+                          ExpressionAttributeValues={':pk': {'S': pk}, ':prefix': {'S': prefix}}, ConsistentRead=True)
+        else:
+            params = dict(TableName=self.table, KeyConditionExpression='PK = :pk',
+                          ExpressionAttributeValues={':pk': {'S': pk}}, ConsistentRead=True)
         items = []
         while True:
             response = self.client.query(**params)

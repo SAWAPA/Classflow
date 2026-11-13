@@ -11,7 +11,7 @@ from store import LocalStore, Conflict
 class FakeFiles:
     def prepare(self, file): return {'url': 'https://test.invalid/upload'}
     def verify(self, file): pass
-    def download(self, file): return 'https://test.invalid/private/' + file['id']
+    def download(self, file, inline=False): return 'https://test.invalid/private/' + file['id']
 
 
 class FakeDirectory:
@@ -89,7 +89,7 @@ class ClassroomTests(unittest.TestCase):
         self.assertNotIn('s2', snapshot['gradebooks'][self.post['id']])
         self.assertEqual(len(snapshot['publication']['rows']), 1)
         self.assertEqual(snapshot['publication']['rows'][0]['userId'], 's1')
-        self.assertNotIn('s2', [m['userId'] for m in snapshot['members']])
+        self.assertIn('s2', [m['userId'] for m in snapshot['members']])
 
     def test_score_boundaries_and_nan(self):
         for score in (-1, 101, float('nan'), float('inf'), True):
@@ -102,6 +102,37 @@ class ClassroomTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.run_action(self.teacher, 'importScores', assessmentId=self.exam['id'], expectedVersion=before['_version'], rows=[{'studentId': '001', 'score': 90}, {'studentId': '002', 'score': 101}])
         after = self.db.get('C#' + self.cid, 'GRADE#' + self.exam['id'])
         self.assertEqual(before, after)
+
+    def test_random_scores_update_every_student(self):
+        result = self.run_action(self.teacher, 'randomScores', assessmentId=self.exam['id'], expectedVersion=0)
+        self.assertEqual(result['updated'], len(self.students))
+        snapshot = self.run_action(self.teacher, 'getClass')
+        scores = snapshot['gradebooks'][self.exam['id']]
+        self.assertEqual(set(scores), {'s1', 's2'})
+        self.assertTrue(all(50 <= entry['score'] <= 100 for entry in scores.values()))
+
+    def test_random_assignment_scores_mark_every_student_submitted(self):
+        result = self.run_action(self.teacher, 'randomScores', assessmentId=self.post['id'], expectedVersion=0)
+        self.assertEqual(result['updated'], len(self.students))
+        snapshot = self.run_action(self.teacher, 'getClass')
+        submissions = [s for s in snapshot['submissions'] if s['postId'] == self.post['id']]
+        self.assertEqual({s['userId'] for s in submissions}, {'s1', 's2'})
+        self.assertTrue(all(s['files'] == [] for s in submissions))
+
+    def test_profile_name_changes_propagate_to_class_members_and_teacher_name(self):
+        self.run_action(self.students[0], 'comment', postId=self.post['id'], text='Question')
+        self.run_action(self.teacher, 'publishGrades')
+        self.app.run(self.teacher, 'updateProfile', {'name': 'New Teacher', 'studentId': ''})
+        teacher_view = self.run_action(self.students[0], 'getClass')
+        self.assertEqual(teacher_view['course']['teacherName'], 'New Teacher')
+        self.assertEqual(teacher_view['posts'][0]['authorName'], 'New Teacher')
+        self.app.run(self.students[0], 'updateProfile', {'name': 'Renamed Student', 'studentId': '001'})
+        student_view = self.run_action(self.teacher, 'getClass')
+        renamed = next(member for member in student_view['members'] if member['userId'] == 's1')
+        self.assertEqual(renamed['name'], 'Renamed Student')
+        self.assertEqual(student_view['comments'][0]['authorName'], 'Renamed Student')
+        published = next(row for row in student_view['publication']['rows'] if row['userId'] == 's1')
+        self.assertEqual(published['name'], 'Renamed Student')
 
     def test_import_rejects_duplicates_and_unknowns(self):
         for rows in [[{'studentId': '001', 'score': 90}, {'studentId': '001', 'score': 80}], [{'studentId': '999', 'score': 70}]]:
@@ -122,6 +153,7 @@ class ClassroomTests(unittest.TestCase):
         fid = prepared['file']['id']
         self.run_action(self.students[0], 'completeUpload', fileId=fid)
         with self.assertRaises(PermissionError): self.run_action(self.students[1], 'downloadFile', fileId=fid)
+        with self.assertRaises(PermissionError): self.run_action(self.students[1], 'downloadFile', fileId=fid, inline=True)
         with self.assertRaises(PermissionError): self.run_action(self.students[1], 'submit', postId=self.post['id'], fileIds=[fid])
         self.assertTrue(self.run_action(self.teacher, 'downloadFile', fileId=fid)['url'])
         self.run_action(self.students[0], 'submit', postId=self.post['id'], fileIds=[fid])

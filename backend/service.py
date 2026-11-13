@@ -7,6 +7,7 @@ from pathlib import Path
 import mimetypes
 
 from domain import DEFAULT_GRADING, build_report, numeric, validate_grading
+from store import Conflict
 
 BLOCKED_EXTENSIONS = {
     '.exe', '.dll', '.so', '.dylib', '.com', '.msi', '.vbs', '.scr', '.bat', '.cmd', '.svg', '.app', '.dmg', '.iso', '.pif', '.lnk'
@@ -43,6 +44,47 @@ class Classroom:
         if user.get('role') != 'admin' or self.directory is None:
             raise PermissionError('เฉพาะผู้ดูแลระบบเท่านั้น')
 
+    def get_all_classrooms(self):
+        classes = []
+        try:
+            join_links = self.db.list('JOIN', '')
+            seen = set()
+            for link in join_links:
+                cid = link.get('classId')
+                if cid and cid not in seen:
+                    seen.add(cid)
+                    c = self.db.get('C#' + cid, 'META')
+                    if c:
+                        classes.append(c)
+        except Exception:
+            pass
+
+        if not classes and hasattr(self.db, 'connect'):
+            with self.db.connect() as conn:
+                rows = conn.execute("SELECT pk, data FROM records WHERE sk = 'META' AND pk LIKE 'C#%'").fetchall()
+                for pk, raw in rows:
+                    cid = pk.removeprefix('C#')
+                    try:
+                        classes.append({'id': cid, **json.loads(raw)})
+                    except Exception:
+                        pass
+        return classes
+
+    def enroll_student_in_all_classes(self, uid, profile):
+        classrooms = self.get_all_classrooms()
+        enrolled = []
+        for c in classrooms:
+            cid = c['id']
+            sid = profile.get('studentId', '')
+            existing = self.db.list('C#' + cid, 'MEMBER#')
+            if not any(m['userId'] == uid for m in existing):
+                if sid:
+                    self.db.put('C#' + cid, 'STUDENT#' + sid, {'userId': uid})
+                self.db.put('C#' + cid, 'MEMBER#' + uid, {**profile, 'entity': 'member', 'userId': uid})
+                self.db.put('U#' + uid, 'CLASS#' + cid, {'classId': cid})
+                enrolled.append(cid)
+        return enrolled
+
     def admin_create_user(self, user, data):
         self.admin_only(user)
         email = text(data.get('email'), 254)
@@ -55,7 +97,138 @@ class Classroom:
         role = data.get('role', 'student')
         if role not in ('admin', 'teacher', 'student'):
             raise ValueError('กำหนดยศได้เฉพาะผู้ดูแลระบบ ครู หรือนักเรียน')
-        return self.directory.create_user(email, name, password, role)
+        created = self.directory.create_user(email, name, password, role)
+
+        uid = created.get('sub') or created.get('id') or email
+        sid = text(data.get('studentId'), 32, False) or ''
+        if role == 'student' and not sid:
+            sid = f"6705{secrets.randbelow(9000) + 1000}"
+
+        profile = {
+            'id': uid,
+            'name': name,
+            'email': email,
+            'role': role,
+            'roleSelected': True,
+            'studentId': sid
+        }
+        self.db.put('U#' + uid, 'PROFILE', profile)
+
+        if role == 'student' and data.get('enrollAllClasses', True):
+            self.enroll_student_in_all_classes(uid, profile)
+
+        return created
+
+    def admin_batch_create_students(self, user, data=None):
+        self.admin_only(user)
+        students_spec = [
+            ('67050001', 'กานต์ธีรา แสงจันทร์', 'student-001', 'student1@example.test', 'student1234'),
+            ('67050002', 'ธนกร ใจดี', 'student-002', 'student2@example.test', 'student1234'),
+            ('67050003', 'ปวีณา พรหมมา', 'student-003', 'student3@example.test', 'student1234'),
+            ('67050004', 'ภูริณัฐ วงศ์ทอง', 'student-004', 'student4@example.test', 'student1234'),
+            ('67050005', 'ศศิธร เมฆขาว', 'student-005', 'student5@example.test', 'student1234'),
+            ('67050006', 'ณัฐดนัย เกียรติสุข', 'student-006', 'student6@example.test', 'student1234'),
+            ('67050007', 'อริสรา มั่นคง', 'student-007', 'student7@example.test', 'student1234'),
+            ('67050008', 'กิตติพงศ์ อินทร์แก้ว', 'student-008', 'student8@example.test', 'student1234'),
+            ('67050009', 'ชนิกานต์ สุวรรณรัตน์', 'student-009', 'student9@example.test', 'student1234'),
+            ('67050010', 'ธนภัทร รัตนวิชัย', 'student-010', 'student10@example.test', 'student1234'),
+            ('67050011', 'เบญญาภา รุ่งเรือง', 'student-011', 'student11@example.test', 'student1234'),
+            ('67050012', 'ภัทรพล เจริญกุล', 'student-012', 'student12@example.test', 'student1234'),
+            ('67050013', 'วริศรา ศรีสุวรรณ', 'student-013', 'student13@example.test', 'student1234'),
+            ('67050014', 'สหรัฐ โชคชัย', 'student-014', 'student14@example.test', 'student1234'),
+            ('67050015', 'อธิปัตย์ พงษ์สวัสดิ์', 'student-015', 'student15@example.test', 'student1234'),
+            ('67050016', 'จิรภัทร ชัยวัฒนา', 'student-016', 'student16@example.test', 'student1234'),
+            ('67050017', 'ธนัชชา วงศ์สวัสดิ์', 'student-017', 'student17@example.test', 'student1234'),
+            ('67050018', 'พิมพ์พิชชา สุทธิกุล', 'student-018', 'student18@example.test', 'student1234'),
+            ('67050019', 'รัชพล ทวีทรัพย์', 'student-019', 'student19@example.test', 'student1234'),
+            ('67050020', 'วรเมธ วิริยพาณิชย์', 'student-020', 'student20@example.test', 'student1234'),
+        ]
+        classrooms = self.get_all_classrooms()
+        if not classrooms:
+            teacher = None
+            if self.directory:
+                teacher = next((u for u in self.directory.list_users() if u.get('role') == 'teacher'), None)
+                if not teacher:
+                    try:
+                        teacher = self.directory.create_user('teacher@example.test', 'อ.ณัฐวดี ศรีวิชา', 'teacher1234', 'teacher')
+                    except Exception:
+                        teacher = {'id': 'teacher-demo', 'name': 'อ.ณัฐวดี ศรีวิชา', 'email': 'teacher@example.test', 'role': 'teacher'}
+            tid = (teacher or {}).get('sub') or (teacher or {}).get('id') or 'teacher-demo'
+            teacher_user = {'id': tid, 'name': (teacher or {}).get('name', 'อ.ณัฐวดี ศรีวิชา'), 'email': (teacher or {}).get('email', 'teacher@example.test'), 'role': 'teacher'}
+            self.db.put('U#' + tid, 'PROFILE', {'role': 'teacher', 'name': teacher_user['name'], 'roleSelected': True})
+            course1 = self.run(teacher_user, 'createClass', {
+                'name': 'Cloud Computing & Virtualization',
+                'subject': '05506258 · ภาคเรียน 2/2569',
+                'description': 'สร้างสิ่งที่เป็นไปได้ ด้วยพลังของคลาวด์'
+            })
+            course2 = self.run(teacher_user, 'createClass', {
+                'name': 'Web Application Development',
+                'subject': '05506259 · ภาคเรียน 2/2569',
+                'description': 'พัฒนาเว็บแอปพลิเคชันยุคใหม่ด้วย React, Node.js และ Cloud'
+            })
+            classrooms = [course1, course2]
+
+        scores_curve = [95, 92, 88, 85, 83, 80, 78, 77, 74, 71, 68, 65, 64, 61, 58, 57, 54, 49, 45, 42]
+
+        for idx, (std_id, name, uid, email, pwd) in enumerate(students_spec):
+            actual_uid = uid
+            try:
+                created = self.directory.create_user(email, name, pwd, 'student')
+                actual_uid = created.get('sub') or created.get('id') or uid
+            except Exception:
+                if hasattr(self.directory, 'resolve_user'):
+                    try:
+                        u = self.directory.resolve_user(email)
+                        actual_uid = u.get('sub') or u.get('id') or uid
+                    except Exception:
+                        pass
+
+            profile = {
+                'id': actual_uid,
+                'name': name,
+                'email': email,
+                'role': 'student',
+                'roleSelected': True,
+                'studentId': std_id,
+            }
+            self.db.put('U#' + actual_uid, 'PROFILE', profile)
+
+            for c in classrooms:
+                cid = c['id']
+                self.db.put('C#' + cid, 'STUDENT#' + std_id, {'userId': actual_uid})
+                self.db.put('C#' + cid, 'MEMBER#' + actual_uid, {**profile, 'entity': 'member', 'userId': actual_uid})
+                self.db.put('U#' + actual_uid, 'CLASS#' + cid, {'classId': cid})
+
+                # Check submissions and grades
+                posts = self.db.list('C#' + cid, 'POST#')
+                assignments = [p for p in posts if p.get('kind') == 'assignment']
+                for a in assignments:
+                    sub_key = f"SUB#{a['id']}#{actual_uid}"
+                    if not self.db.get('C#' + cid, sub_key):
+                        score = scores_curve[idx % len(scores_curve)]
+                        self.db.put('C#' + cid, sub_key, {
+                            'entity': 'submission',
+                            'postId': a['id'],
+                            'userId': actual_uid,
+                            'files': [],
+                            'comment': f'งานส่งโดย {name}',
+                            'submittedAt': now(),
+                            'late': idx >= 17,
+                            'revision': 1
+                        })
+                        gb = self.db.get('C#' + cid, 'GRADE#' + a['id']) or {'entity': 'gradebook', 'assessmentId': a['id'], 'scores': {}}
+                        scores = gb.get('scores', {})
+                        scores[actual_uid] = {
+                            'score': score,
+                            'rubricScores': {},
+                            'feedback': 'ตรวจแล้วเรียบร้อย' if score >= 80 else 'ตรวจแล้ว',
+                            'gradedAt': now()
+                        }
+                        gb['scores'] = scores
+                        gb['updatedAt'] = now()
+                        self.db.put('C#' + cid, 'GRADE#' + a['id'], gb)
+
+        return {'success': True, 'count': len(students_spec), 'classroomsCount': len(classrooms), 'classroomNames': [c.get('name') for c in classrooms]}
 
     def profile(self, user):
         prior = self.db.get('U#' + user['id'], 'PROFILE') or {}
@@ -84,13 +257,41 @@ class Classroom:
         teacher = course['ownerId'] == user['id']
         posts = sorted([r for r in rows if r.get('entity') == 'post'], key=lambda r: r['createdAt'], reverse=True)
         students = [r for r in rows if r.get('entity') == 'member']
+        names = {}
+        for student in students:
+            current_profile = self.db.get('U#' + student['userId'], 'PROFILE') or {}
+            student['name'] = current_profile.get('name') or student['name']
+            names[student['userId']] = student['name']
+        owner_id = course.get('ownerId')
+        if owner_id:
+            owner_profile = self.db.get('U#' + owner_id, 'PROFILE') or {}
+            course['teacherName'] = owner_profile.get('name') or course.get('teacherName', 'อาจารย์')
+            names[owner_id] = course['teacherName']
+        for post in posts:
+            post['version'] = post.get('_version', 0)
+            post['authorName'] = names.get(post.get('authorId') or owner_id, post.get('authorName', 'อาจารย์'))
+        for comment in rows:
+            if comment.get('entity') == 'comment':
+                comment['authorName'] = names.get(comment.get('authorId'), comment.get('authorName', 'สมาชิก'))
+        if owner_id and not any(m.get('userId') == owner_id for m in students):
+            teacher_profile = self.db.get('U#' + owner_id, 'PROFILE') or {}
+            students.insert(0, {
+                'entity': 'member',
+                'userId': owner_id,
+                'name': course.get('teacherName') or teacher_profile.get('name') or 'อาจารย์',
+                'email': teacher_profile.get('email', ''),
+                'role': 'teacher',
+                'studentId': ''
+            })
         submissions = [r for r in rows if r.get('entity') == 'submission' and (teacher or r['userId'] == user['id'])]
         gradebooks = {r['assessmentId']: r['scores'] if teacher else {user['id']: r['scores'][user['id']]} if user['id'] in r['scores'] else {} for r in rows if r.get('entity') == 'gradebook'}
         publication = next((r for r in rows if r.get('entity') == 'publication'), None)
         if publication and not teacher:
             publication = {'publishedAt': publication['publishedAt'], 'rows': [r for r in publication['rows'] if r['userId'] == user['id']]}
+        if publication:
+            for row in publication['rows']:
+                row['name'] = names.get(row['userId'], row.get('name', 'นักเรียน'))
         if not teacher:
-            students = [r for r in students if r['userId'] in (user['id'], course['ownerId'])]
             course = {k: v for k, v in course.items() if k not in ('joinCode', 'grading')}
         course['version'] = course.get('_version', 0)
         return {'course': course, 'membership': member, 'posts': posts, 'members': students, 'submissions': submissions,
@@ -104,11 +305,101 @@ class Classroom:
         return build_report(state['members'], state['posts'], state['exams'], state['gradebooks'],
                             {f"{s['postId']}#{s['userId']}": s for s in state['submissions']}, config or state['course']['grading'])
 
+    @staticmethod
+    def message_key(message):
+        timestamp = dt.datetime.fromisoformat(message['createdAt'].replace('Z', '+00:00'))
+        return timestamp.astimezone(dt.timezone.utc).isoformat(timespec='microseconds').replace('+00:00', 'Z') + '#' + message['id']
+
+    @staticmethod
+    def conversation_pk(uid, peer):
+        return 'DM#' + json.dumps(sorted([uid, peer]), separators=(',', ':'))
+
+    def chat_contacts(self, user):
+        uid = user['id']
+        contacts = {}
+        for link in self.db.list('U#' + uid, 'CLASS#'):
+            cid = link['classId']
+            course = self.db.get('C#' + cid, 'META')
+            member = self.db.get('C#' + cid, 'MEMBER#' + uid)
+            if not course or not member:
+                continue
+            if course['ownerId'] == uid:
+                peers = [m for m in self.db.list('C#' + cid, 'MEMBER#') if m.get('role') == 'student' and m['userId'] != uid]
+            elif member.get('role') == 'student':
+                owner = self.db.get('U#' + course['ownerId'], 'PROFILE') or {}
+                peers = [{'userId': course['ownerId'], 'name': owner.get('name') or course.get('teacherName', 'อาจารย์'), 'role': 'teacher'}]
+            else:
+                peers = []
+            for peer in peers:
+                pid = peer['userId']
+                if pid not in contacts:
+                    current = self.db.get('U#' + pid, 'PROFILE') or peer
+                    contacts[pid] = {'peerId': pid, 'name': current.get('name', peer.get('name', 'สมาชิก')), 'studentId': current.get('studentId', ''), 'role': peer.get('role'), 'classes': []}
+                contacts[pid]['classes'].append({'id': cid, 'name': course['name'], 'studentUserId': pid if course['ownerId'] == uid else uid})
+        return contacts
+
+    def chat_history(self, uid, contact):
+        peer = contact['peerId']
+        messages = self.db.list(self.conversation_pk(uid, peer), 'MSG#')
+        # Merge old classroom threads without rewriting or deleting their records.
+        for course in contact['classes']:
+            messages.extend(self.db.list('C#' + course['id'], 'DM#' + course['studentUserId'] + '#'))
+        unique = {m['id']: m for m in messages if m.get('senderId') in (uid, peer)}
+        for message in unique.values():
+            message['readKey'] = self.message_key(message)
+        return sorted(unique.values(), key=self.message_key)
+
+    def chat_action(self, user, profile, action, data):
+        uid = user['id']
+        contacts = self.chat_contacts(user)
+        if action == 'listConversations':
+            inbox = []
+            for contact in contacts.values():
+                messages = self.chat_history(uid, contact)
+                read = self.db.get('U#' + uid, 'CHATREAD#' + contact['peerId']) or {}
+                unread = sum(m['senderId'] != uid and self.message_key(m) > read.get('through', '') for m in messages)
+                inbox.append({**contact, 'lastMessage': messages[-1] if messages else None, 'unreadCount': unread})
+            inbox.sort(key=lambda c: c['name'].casefold())
+            inbox.sort(key=lambda c: self.message_key(c['lastMessage']) if c['lastMessage'] else '', reverse=True)
+            return inbox
+        peer_id = data.get('peerId')
+        if not peer_id and data.get('classId'):
+            course, member = self.access(user, text(data['classId'], 64))
+            peer_id = data.get('studentUserId') if course['ownerId'] == uid else course['ownerId']
+        contact = contacts.get(text(peer_id, 128))
+        if not contact:
+            raise PermissionError('ไม่มีสิทธิ์เข้าถึงบทสนทนานี้')
+        messages = self.chat_history(uid, contact)
+        if action == 'markMessagesRead':
+            through = text(data.get('through'), 200)
+            if through not in {self.message_key(m) for m in messages}:
+                raise ValueError('ไม่พบข้อความที่อ่าน')
+            key = 'CHATREAD#' + contact['peerId']
+            for _ in range(3):
+                prior = self.db.get('U#' + uid, key) or {}
+                if prior.get('through', '') >= through:
+                    return {'read': True}
+                try:
+                    self.db.put('U#' + uid, key, {'through': through}, expected=prior.get('_version', 0))
+                    return {'read': True}
+                except Conflict:
+                    continue
+            raise Conflict('สถานะการอ่านเปลี่ยนแล้ว กรุณาลองใหม่')
+        if action == 'sendMessage':
+            message = {'entity': 'message', 'id': ident(), 'senderId': uid, 'senderName': profile['name'], 'text': text(data.get('text')), 'createdAt': dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds').replace('+00:00', 'Z')}
+            message['readKey'] = self.message_key(message)
+            self.db.put(self.conversation_pk(uid, contact['peerId']), 'MSG#' + self.message_key(message), message, expected=0)
+            messages.append(message)
+            messages.sort(key=self.message_key)
+        return messages[-100:]
+
     def run(self, user, action, data):
         profile = self.profile(user)
         uid = user['id']
         if user.get('role') != 'admin' and profile.get('role'):
             user = {**user, 'role': profile['role']}
+        if action in ('listConversations', 'getMessages', 'sendMessage', 'markMessagesRead'):
+            return self.chat_action(user, profile, action, data)
         if action == 'bootstrap':
             links = self.db.list('U#' + uid, 'CLASS#')
             courses = [self.db.get('C#' + l['classId'], 'META') for l in links]
@@ -138,12 +429,24 @@ class Classroom:
             student_id = text(data.get('studentId'), 32, False)
             if student_id != profile['studentId'] and self.db.list('U#' + uid, 'CLASS#'):
                 raise ValueError('แก้รหัสนักเรียนหลังเข้าห้องเรียนไม่ได้ กรุณาติดต่อครู')
-            return self.db.put('U#' + uid, 'PROFILE', {**profile, 'name': text(data.get('name'), 120), 'studentId': student_id})
+            updated = self.db.put('U#' + uid, 'PROFILE', {**profile, 'name': text(data.get('name'), 120), 'studentId': student_id})
+            for link in self.db.list('U#' + uid, 'CLASS#'):
+                class_id = link['classId']
+                member_key = 'MEMBER#' + uid
+                member = self.db.get('C#' + class_id, member_key)
+                if member:
+                    self.db.put('C#' + class_id, member_key, {**member, 'name': updated['name'], 'studentId': student_id}, expected=member['_version'])
+                course = self.db.get('C#' + class_id, 'META')
+                if course and course.get('ownerId') == uid:
+                    self.db.put('C#' + class_id, 'META', {**course, 'teacherName': updated['name']}, expected=course['_version'])
+            return updated
         if action == 'adminListUsers':
             self.admin_only(user)
             return self.directory.list_users()
         if action == 'adminCreateUser':
             return self.admin_create_user(user, data)
+        if action == 'adminBatchCreateStudents':
+            return self.admin_batch_create_students(user, data)
         if action == 'adminSetUserRole':
             self.admin_only(user)
             target = text(data.get('userId'), 254)
@@ -209,6 +512,20 @@ class Classroom:
                     raise ValueError('คะแนน Rubric รวมต้องเท่ากับคะแนนเต็ม')
                 post.update(dueAt=due.astimezone(dt.timezone.utc).isoformat().replace('+00:00', 'Z'), maxScore=maximum, rubric=rubric)
             return self.db.put(pk, 'POST#' + pid, post, expected=0)
+        if action == 'updatePost':
+            self.access(user, cid, True)
+            post = self.db.get(pk, 'POST#' + text(data.get('postId'), 64))
+            if not post:
+                raise ValueError('ไม่พบโพสต์')
+            if data.get('expectedVersion') != post['_version']:
+                raise ValueError('โพสต์เปลี่ยนแล้ว กรุณารีเฟรชก่อนบันทึก')
+            updated = {**post, 'title': text(data.get('title'), 150), 'description': text(data.get('description'), 8000, False), 'updatedAt': now()}
+            if post['kind'] == 'assignment' and 'dueAt' in data:
+                due = dt.datetime.fromisoformat(str(data['dueAt']).replace('Z', '+00:00'))
+                if due.tzinfo is None:
+                    raise ValueError('กำหนดส่งต้องมี timezone')
+                updated['dueAt'] = due.astimezone(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
+            return self.db.put(pk, 'POST#' + post['id'], updated, expected=post['_version'])
         if action == 'comment':
             post = self.db.get(pk, 'POST#' + text(data.get('postId'), 64))
             if not post:
@@ -235,7 +552,7 @@ class Classroom:
             self.access(user, cid, True)
             exam = {'entity': 'exam', 'id': ident(), 'title': text(data.get('title'), 120), 'maxScore': numeric(data.get('maxScore'), 1, 1000), 'createdAt': now()}
             return self.db.put(pk, 'EXAM#' + exam['id'], exam, expected=0)
-        if action in ('grade', 'importScores'):
+        if action in ('grade', 'importScores', 'randomScores'):
             self.access(user, cid, True)
             aid = text(data.get('assessmentId'), 64)
             assessment = self.db.get(pk, 'POST#' + aid) or self.db.get(pk, 'EXAM#' + aid)
@@ -245,7 +562,14 @@ class Classroom:
             if data.get('expectedVersion') != gradebook['_version']:
                 raise ValueError('สมุดคะแนนเปลี่ยนแล้ว กรุณารีเฟรชก่อนบันทึก')
             roster = {m['userId']: m for m in self.db.list(pk, 'MEMBER#') if m['role'] == 'student'}
-            updates = data.get('rows') if action == 'importScores' else [data]
+            if action == 'randomScores':
+                rubric = assessment.get('rubric') or []
+                updates = []
+                for uid in roster:
+                    rubric_scores = {item['id']: round(item['max'] * (0.5 + secrets.randbelow(5001) / 10000), 1) for item in rubric}
+                    updates.append({'userId': uid, 'score': round(sum(rubric_scores.values()), 1) if rubric else round(assessment['maxScore'] * (0.5 + secrets.randbelow(5001) / 10000), 1), 'rubricScores': rubric_scores})
+            else:
+                updates = data.get('rows') if action == 'importScores' else [data]
             if not isinstance(updates, list) or not 1 <= len(updates) <= 500:
                 raise ValueError('นำเข้าได้ 1–500 แถวต่อครั้ง')
             seen = set()
@@ -269,6 +593,14 @@ class Classroom:
             if len(json.dumps(gradebook, ensure_ascii=False).encode()) > 350000:
                 raise ValueError('สมุดคะแนนมีข้อมูลมากเกินไป กรุณาลดความยาวข้อเสนอแนะ')
             result = self.db.put(pk, 'GRADE#' + aid, gradebook, expected=gradebook['_version'])
+            if action == 'randomScores' and assessment.get('entity') == 'post' and assessment.get('kind') == 'assignment':
+                due = dt.datetime.fromisoformat(assessment['dueAt'].replace('Z', '+00:00'))
+                for uid in roster:
+                    submission_key = f"SUB#{aid}#{uid}"
+                    if self.db.get(pk, submission_key):
+                        continue
+                    submitted_at = now()
+                    self.db.put(pk, submission_key, {'entity': 'submission', 'postId': aid, 'userId': uid, 'files': [], 'comment': 'ส่งงานอัตโนมัติสำหรับข้อมูลสาธิต', 'submittedAt': submitted_at, 'late': dt.datetime.fromisoformat(submitted_at.replace('Z', '+00:00')) > due, 'revision': 1}, expected=0)
             return {'updated': len(updates), 'version': result['_version']}
         if action == 'previewGrades':
             return self.report(user, cid, data.get('config'))
@@ -283,15 +615,6 @@ class Classroom:
             publication = {'entity': 'publication', 'rows': report['rows'], 'config': report['config'], 'publishedAt': now()}
             self.db.put(pk, 'PUBLISHED', publication)
             return publication
-        if action in ('getMessages', 'sendMessage'):
-            target = text(data.get('studentUserId') if teacher else uid, 100)
-            student = self.db.get(pk, 'MEMBER#' + target)
-            if not student or student['role'] != 'student':
-                raise PermissionError('ไม่พบคู่สนทนาในห้องเรียน')
-            if action == 'sendMessage':
-                message = {'entity': 'message', 'id': ident(), 'senderId': uid, 'senderName': profile['name'], 'text': text(data.get('text')), 'createdAt': now()}
-                self.db.put(pk, f"DM#{target}#{message['createdAt']}#{message['id']}", message, expected=0)
-            return self.db.list(pk, f'DM#{target}#')[-100:]
         if action == 'initUpload':
             entity_id, context = text(data.get('entityId'), 64), data.get('context')
             post = self.db.get(pk, 'POST#' + entity_id)
@@ -318,7 +641,10 @@ class Classroom:
             if action == 'downloadFile':
                 if file['status'] != 'ready':
                     raise ValueError('ไฟล์ยังไม่พร้อม')
-                return {'url': self.files.download(file)}
+                inline = bool(data.get('inline'))
+                if inline and file.get('mime') not in ('application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'):
+                    raise ValueError('รองรับตัวอย่างไฟล์รูปภาพและ PDF เท่านั้น')
+                return {'url': self.files.download(file, inline=inline)}
             if file['ownerId'] != uid:
                 raise PermissionError('ยืนยันได้เฉพาะไฟล์ของตนเอง')
             self.files.verify(file)
@@ -329,6 +655,7 @@ class Classroom:
                 if len(post['files']) >= 5 and all(f['id'] != file['id'] for f in post['files']):
                     raise ValueError('แนบได้สูงสุด 5 ไฟล์ต่อโพสต์')
                 post['files'] = [f for f in post['files'] if f['id'] != file['id']] + [result]
+                post['updatedAt'] = now()
                 self.db.put(pk, 'POST#' + post['id'], post, expected=post['_version'])
             return result
         raise ValueError('ไม่รู้จักคำสั่งนี้')
