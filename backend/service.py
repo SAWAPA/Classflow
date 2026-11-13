@@ -320,7 +320,17 @@ class Classroom:
             student_id = text(data.get('studentId'), 32, False)
             if student_id != profile['studentId'] and self.db.list('U#' + uid, 'CLASS#'):
                 raise ValueError('แก้รหัสนักเรียนหลังเข้าห้องเรียนไม่ได้ กรุณาติดต่อครู')
-            return self.db.put('U#' + uid, 'PROFILE', {**profile, 'name': text(data.get('name'), 120), 'studentId': student_id})
+            updated = self.db.put('U#' + uid, 'PROFILE', {**profile, 'name': text(data.get('name'), 120), 'studentId': student_id})
+            for link in self.db.list('U#' + uid, 'CLASS#'):
+                class_id = link['classId']
+                member_key = 'MEMBER#' + uid
+                member = self.db.get('C#' + class_id, member_key)
+                if member:
+                    self.db.put('C#' + class_id, member_key, {**member, 'name': updated['name'], 'studentId': student_id}, expected=member['_version'])
+                course = self.db.get('C#' + class_id, 'META')
+                if course and course.get('ownerId') == uid:
+                    self.db.put('C#' + class_id, 'META', {**course, 'teacherName': updated['name']}, expected=course['_version'])
+            return updated
         if action == 'adminListUsers':
             self.admin_only(user)
             return self.directory.list_users()
@@ -517,7 +527,7 @@ class Classroom:
             if action == 'downloadFile':
                 if file['status'] != 'ready':
                     raise ValueError('ไฟล์ยังไม่พร้อม')
-                return {'url': self.files.download(file)}
+                return {'url': self.files.download(file, inline=bool(data.get('inline')))}
             if file['ownerId'] != uid:
                 raise PermissionError('ยืนยันได้เฉพาะไฟล์ของตนเอง')
             self.files.verify(file)

@@ -1,5 +1,5 @@
 import {useEffect, useState, useMemo} from 'react';
-import {BookOpen, ClipboardList, CalendarDays, Clock, Sparkles, ArrowUpRight, ChevronRight, Plus, MessageCircle, Paperclip, RefreshCw, Send, AlertCircle, CheckCircle2, Filter, Search, X, Megaphone, FileText} from 'lucide-react';
+import {BookOpen, ClipboardList, CalendarDays, Clock, ArrowUpRight, ChevronRight, Plus, MessageCircle, Paperclip, RefreshCw, Send, AlertCircle, CheckCircle2, Filter, Search, X, Megaphone, FileText} from 'lucide-react';
 import {rpc} from './api';
 import {Avatar, Badge, Btn, Empty, date} from './ui';
 
@@ -126,7 +126,7 @@ export function Stream({state, profile, open, create}) {
         {search || filterType !== 'all' ? 'ไม่พบประกาศ งาน หรือไฟล์ที่ตรงกับคำค้นหา' : 'ยังไม่มีโพสต์ในห้องเรียนนี้'}
       </Empty>
     )}
-  </section><aside><div className="side-card"><div className="section-title"><h3>กำลังจะถึง</h3><CalendarDays size={18}/></div>{assignments.filter(p => new Date(p.dueAt) >= new Date()).sort((a, b) => a.dueAt.localeCompare(b.dueAt)).slice(0, 4).map(p => <button className="upcoming" key={p.id} onClick={() => open(p)}><div className="date-tile"><strong>{new Date(p.dueAt).getDate()}</strong><small>{new Date(p.dueAt).toLocaleDateString('th-TH', {month: 'short'})}</small></div><div><strong>{p.title}</strong><small>{date(p.dueAt)}</small></div><ChevronRight size={15}/></button>)}{!assignments.some(p => new Date(p.dueAt) >= new Date()) && <p className="muted">ยังไม่มีกำหนดส่งงานถัดไป</p>}</div><div className="tip-card"><Sparkles size={23}/><h3>ทุกความก้าวหน้า<br/>มีความหมาย</h3><p>ค่อย ๆ เรียนรู้ ลงมือทำ และถามเมื่อสงสัย ห้องเรียนนี้พร้อมเติบโตไปกับคุณ</p><div className="tip-line"/></div>{teacher && <div className="side-card"><small className="eyebrow">INVITE YOUR CLASS</small><h3>รหัสเข้าห้องเรียน</h3><div className="join-code">{state.course.joinCode}</div><p className="muted">ส่งรหัสนี้ให้นักเรียนเข้าร่วม</p></div>}</aside></div>;
+  </section><aside><div className="side-card"><div className="section-title"><h3>กำลังจะถึง</h3><CalendarDays size={18}/></div>{assignments.filter(p => new Date(p.dueAt) >= new Date()).sort((a, b) => a.dueAt.localeCompare(b.dueAt)).slice(0, 4).map(p => <button className="upcoming" key={p.id} onClick={() => open(p)}><div className="date-tile"><strong>{new Date(p.dueAt).getDate()}</strong><small>{new Date(p.dueAt).toLocaleDateString('th-TH', {month: 'short'})}</small></div><div><strong>{p.title}</strong><small>{date(p.dueAt)}</small></div><ChevronRight size={15}/></button>)}{!assignments.some(p => new Date(p.dueAt) >= new Date()) && <p className="muted">ยังไม่มีกำหนดส่งงานถัดไป</p>}</div>{teacher && <div className="side-card"><small className="eyebrow">INVITE YOUR CLASS</small><h3>รหัสเข้าห้องเรียน</h3><div className="join-code">{state.course.joinCode}</div><p className="muted">ส่งรหัสนี้ให้นักเรียนเข้าร่วม</p></div>}</aside></div>;
 }
 export function Work({state, states = [], courses = [], profile, open, grade, create}) {
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'overdue' | 'submitted'
@@ -515,7 +515,7 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
   );
 }
 export function Timeline({state, profile, open}) {
-  const teacher = profile.id === state.course.ownerId, posts = state.posts.filter(p => p.kind === 'assignment').sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+  const teacher = profile.id === state.course.ownerId, posts = state.posts.filter(p => p.kind === 'assignment').sort((a, b) => String(b.createdAt || b.dueAt).localeCompare(String(a.createdAt || a.dueAt)));
   return <section className="panel"><div className="section-title"><div><div className="eyebrow">ONE STEP AT A TIME</div><h2>เส้นทางการเรียนรู้</h2><p className="muted">เห็นทุกกำหนดส่ง วางแผนได้ก่อนถึงวันจริง</p></div><CalendarDays size={28}/></div><div className="timeline">{posts.map(p => {const mine = state.submissions.find(s => s.postId === p.id && s.userId === profile.id); return <button className="timeline-item" key={p.id} onClick={() => open(p)}><span className={`timeline-dot ${new Date(p.dueAt) < new Date() ? 'past' : ''}`}/><div className="timeline-date">{date(p.dueAt)}</div><div><h3>{p.title}</h3><p>{p.maxScore} คะแนน · {teacher ? `ส่งแล้ว ${state.submissions.filter(s => s.postId === p.id).length} คน` : mine ? mine.late ? 'ส่งช้า' : 'ส่งแล้ว' : 'ยังไม่ส่ง'}</p></div><ArrowUpRight size={18}/></button>;})}{!posts.length && <Empty icon={CalendarDays}>ยังไม่มีกำหนดส่งงาน</Empty>}</div></section>;
 }
 export function Messages({state, profile, notify}) {

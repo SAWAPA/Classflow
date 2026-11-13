@@ -11,7 +11,7 @@ from store import LocalStore, Conflict
 class FakeFiles:
     def prepare(self, file): return {'url': 'https://test.invalid/upload'}
     def verify(self, file): pass
-    def download(self, file): return 'https://test.invalid/private/' + file['id']
+    def download(self, file, inline=False): return 'https://test.invalid/private/' + file['id']
 
 
 class FakeDirectory:
@@ -118,6 +118,15 @@ class ClassroomTests(unittest.TestCase):
         submissions = [s for s in snapshot['submissions'] if s['postId'] == self.post['id']]
         self.assertEqual({s['userId'] for s in submissions}, {'s1', 's2'})
         self.assertTrue(all(s['files'] == [] for s in submissions))
+
+    def test_profile_name_changes_propagate_to_class_members_and_teacher_name(self):
+        self.app.run(self.teacher, 'updateProfile', {'name': 'New Teacher', 'studentId': ''})
+        teacher_view = self.run_action(self.students[0], 'getClass')
+        self.assertEqual(teacher_view['course']['teacherName'], 'New Teacher')
+        self.app.run(self.students[0], 'updateProfile', {'name': 'Renamed Student', 'studentId': '001'})
+        student_view = self.run_action(self.teacher, 'getClass')
+        renamed = next(member for member in student_view['members'] if member['userId'] == 's1')
+        self.assertEqual(renamed['name'], 'Renamed Student')
 
     def test_import_rejects_duplicates_and_unknowns(self):
         for rows in [[{'studentId': '001', 'score': 90}, {'studentId': '001', 'score': 80}], [{'studentId': '999', 'score': 70}]]:

@@ -100,7 +100,7 @@ class LocalFiles:
         if not path.exists() or path.stat().st_size != file['size']:
             raise ValueError('ไฟล์ยังอัปโหลดไม่ครบ')
 
-    def download(self, file):
+    def download(self, file, inline=False):
         token = secrets.token_urlsafe(32)
         self.tickets[token] = {'file': file, 'expires': time.time() + 60, 'mode': 'download'}
         return 'http://127.0.0.1:' + os.environ.get('CLASSFLOW_LOCAL_PORT', '8000') + '/files/' + token

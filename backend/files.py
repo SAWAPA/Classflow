@@ -18,6 +18,6 @@ class S3Files:
         if head['ContentLength'] != file['size'] or head['ContentType'] != file['mime']:
             raise ValueError('ขนาดหรือประเภทไฟล์ไม่ตรงกับข้อมูลที่แจ้ง')
 
-    def download(self, file):
+    def download(self, file, inline=False):
         return self.s3.generate_presigned_url('get_object', Params={'Bucket': self.bucket, 'Key': file['key'],
-             'ResponseContentDisposition': "attachment; filename*=UTF-8''" + quote(file['filename'])}, ExpiresIn=60)
+             'ResponseContentDisposition': ("inline;" if inline else "attachment;") + " filename*=UTF-8''" + quote(file['filename'])}, ExpiresIn=60)
