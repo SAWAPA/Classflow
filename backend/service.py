@@ -430,9 +430,11 @@ class Classroom:
                 raise ValueError('สมุดคะแนนเปลี่ยนแล้ว กรุณารีเฟรชก่อนบันทึก')
             roster = {m['userId']: m for m in self.db.list(pk, 'MEMBER#') if m['role'] == 'student'}
             if action == 'randomScores':
-                if assessment.get('rubric'):
-                    raise ValueError('งานที่มี Rubric ต้องให้คะแนนแยกหัวข้อ')
-                updates = [{'userId': uid, 'score': round(assessment['maxScore'] * (0.5 + secrets.randbelow(5001) / 10000), 1)} for uid in roster]
+                rubric = assessment.get('rubric') or []
+                updates = []
+                for uid in roster:
+                    rubric_scores = {item['id']: round(item['max'] * (0.5 + secrets.randbelow(5001) / 10000), 1) for item in rubric}
+                    updates.append({'userId': uid, 'score': round(sum(rubric_scores.values()), 1) if rubric else round(assessment['maxScore'] * (0.5 + secrets.randbelow(5001) / 10000), 1), 'rubricScores': rubric_scores})
             else:
                 updates = data.get('rows') if action == 'importScores' else [data]
             if not isinstance(updates, list) or not 1 <= len(updates) <= 500:
@@ -458,6 +460,14 @@ class Classroom:
             if len(json.dumps(gradebook, ensure_ascii=False).encode()) > 350000:
                 raise ValueError('สมุดคะแนนมีข้อมูลมากเกินไป กรุณาลดความยาวข้อเสนอแนะ')
             result = self.db.put(pk, 'GRADE#' + aid, gradebook, expected=gradebook['_version'])
+            if action == 'randomScores' and assessment.get('entity') == 'post' and assessment.get('kind') == 'assignment':
+                due = dt.datetime.fromisoformat(assessment['dueAt'].replace('Z', '+00:00'))
+                for uid in roster:
+                    submission_key = f"SUB#{aid}#{uid}"
+                    if self.db.get(pk, submission_key):
+                        continue
+                    submitted_at = now()
+                    self.db.put(pk, submission_key, {'entity': 'submission', 'postId': aid, 'userId': uid, 'files': [], 'comment': 'ส่งงานอัตโนมัติสำหรับข้อมูลสาธิต', 'submittedAt': submitted_at, 'late': dt.datetime.fromisoformat(submitted_at.replace('Z', '+00:00')) > due, 'revision': 1}, expected=0)
             return {'updated': len(updates), 'version': result['_version']}
         if action == 'previewGrades':
             return self.report(user, cid, data.get('config'))

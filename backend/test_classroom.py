@@ -111,6 +111,14 @@ class ClassroomTests(unittest.TestCase):
         self.assertEqual(set(scores), {'s1', 's2'})
         self.assertTrue(all(50 <= entry['score'] <= 100 for entry in scores.values()))
 
+    def test_random_assignment_scores_mark_every_student_submitted(self):
+        result = self.run_action(self.teacher, 'randomScores', assessmentId=self.post['id'], expectedVersion=0)
+        self.assertEqual(result['updated'], len(self.students))
+        snapshot = self.run_action(self.teacher, 'getClass')
+        submissions = [s for s in snapshot['submissions'] if s['postId'] == self.post['id']]
+        self.assertEqual({s['userId'] for s in submissions}, {'s1', 's2'})
+        self.assertTrue(all(s['files'] == [] for s in submissions))
+
     def test_import_rejects_duplicates_and_unknowns(self):
         for rows in [[{'studentId': '001', 'score': 90}, {'studentId': '001', 'score': 80}], [{'studentId': '999', 'score': 70}]]:
             with self.assertRaises(ValueError): self.run_action(self.teacher, 'importScores', assessmentId=self.exam['id'], expectedVersion=0, rows=rows)
