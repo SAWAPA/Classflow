@@ -1,5 +1,5 @@
-import {useEffect, useState, useMemo} from 'react';
-import {BookOpen, ClipboardList, CalendarDays, Clock, ArrowUpRight, ChevronRight, Plus, MessageCircle, Paperclip, RefreshCw, Send, AlertCircle, CheckCircle2, Filter, Search, X, Megaphone, FileText} from 'lucide-react';
+import {useEffect, useState, useMemo, useRef} from 'react';
+import {BookOpen, ClipboardList, CalendarDays, Clock, ArrowUpRight, ChevronRight, ChevronDown, Check, Layers, Plus, MessageCircle, Paperclip, RefreshCw, Send, AlertCircle, CheckCircle2, Filter, Search, X, Megaphone, FileText} from 'lucide-react';
 import {rpc} from './api';
 import {Avatar, Badge, Btn, Empty, date} from './ui';
 
@@ -128,6 +128,154 @@ export function Stream({state, profile, open, create}) {
     )}
   </section><aside><div className="side-card"><div className="section-title"><h3>กำลังจะถึง</h3><CalendarDays size={18}/></div>{assignments.filter(p => new Date(p.dueAt) >= new Date()).sort((a, b) => a.dueAt.localeCompare(b.dueAt)).slice(0, 4).map(p => <button className="upcoming" key={p.id} onClick={() => open(p)}><div className="date-tile"><strong>{new Date(p.dueAt).getDate()}</strong><small>{new Date(p.dueAt).toLocaleDateString('th-TH', {month: 'short'})}</small></div><div><strong>{p.title}</strong><small>{date(p.dueAt)}</small></div><ChevronRight size={15}/></button>)}{!assignments.some(p => new Date(p.dueAt) >= new Date()) && <p className="muted">ยังไม่มีกำหนดส่งงานถัดไป</p>}</div>{teacher && <div className="side-card"><small className="eyebrow">INVITE YOUR CLASS</small><h3>รหัสเข้าห้องเรียน</h3><div className="join-code">{state.course.joinCode}</div><p className="muted">ส่งรหัสนี้ให้นักเรียนเข้าร่วม</p></div>}</aside></div>;
 }
+export function CourseFilterDropdown({courses = [], selectedId = 'all', onSelect, allCount = 0, countsByCourse}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef(null);
+
+  const selectedCourse = courses.find(c => c.id === selectedId);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [open]);
+
+  const filteredCourses = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return courses;
+    const cleanQ = q.replace(/[\s\-_]/g, '');
+    return courses.filter(c => {
+      const name = (c.name || '').toLowerCase();
+      const subject = (c.subject || '').toLowerCase();
+      const teacher = (c.teacherName || '').toLowerCase();
+      const code = (c.code || '').toLowerCase();
+      if (name.includes(q) || subject.includes(q) || teacher.includes(q) || code.includes(q)) return true;
+      if (cleanQ) {
+        const cleanName = name.replace(/[\s\-_]/g, '');
+        const cleanSubject = subject.replace(/[\s\-_]/g, '');
+        const cleanCode = code.replace(/[\s\-_]/g, '');
+        if (cleanName.includes(cleanQ) || cleanSubject.includes(cleanQ) || cleanCode.includes(cleanQ)) return true;
+      }
+      return false;
+    });
+  }, [courses, search]);
+
+  const selectedCount = selectedId === 'all'
+    ? allCount
+    : (countsByCourse ? countsByCourse(selectedId) : 0);
+
+  return (
+    <div className="course-filter-dropdown-wrapper" ref={ref}>
+      <button
+        type="button"
+        className={`course-filter-dropdown-btn ${open ? 'open' : ''} ${selectedId !== 'all' ? 'filtered' : ''}`}
+        onClick={() => setOpen(prev => !prev)}
+        aria-expanded={open}
+        aria-label="เลือกรายวิชาเพื่อกรองข้อมูล"
+      >
+        <div className="filter-dropdown-btn-left">
+          <Filter size={14} className="filter-icon"/>
+          <span className="filter-label">รายวิชา:</span>
+          <strong className="filter-selected-name" title={selectedCourse ? selectedCourse.name : 'ทุกรายวิชา'}>
+            {selectedCourse ? selectedCourse.name : 'ทุกรายวิชา'}
+          </strong>
+        </div>
+        <span className="filter-selected-badge">{selectedCount}</span>
+        <ChevronDown size={14} className={`filter-chevron ${open ? 'open' : ''}`}/>
+      </button>
+
+      {open && (
+        <div className="course-filter-dropdown-menu">
+          <div className="course-filter-search">
+            <Search size={14} className="course-filter-search-icon"/>
+            <input
+              type="text"
+              placeholder="ค้นหาชื่อวิชา หรือรหัสวิชา…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              autoFocus
+            />
+            {search && (
+              <button
+                type="button"
+                className="filter-search-clear"
+                aria-label="ล้างคำค้นหา"
+                onClick={() => setSearch('')}
+              >
+                <X size={12}/>
+              </button>
+            )}
+          </div>
+
+          <div className="course-filter-list">
+            {(!search.trim() || 'ทุกรายวิชา'.includes(search.trim().toLowerCase()) || 'all'.includes(search.trim().toLowerCase())) && (
+              <div
+                className={`course-filter-item ${selectedId === 'all' ? 'active' : ''}`}
+                onClick={() => {
+                  onSelect('all');
+                  setOpen(false);
+                  setSearch('');
+                }}
+              >
+                <div className="course-filter-item-icon all">
+                  <Layers size={14}/>
+                </div>
+                <div className="course-filter-item-text">
+                  <strong>ทุกรายวิชา</strong>
+                  <small>แสดงงานจากทุกห้องเรียน</small>
+                </div>
+                <span className="item-count-badge">{allCount}</span>
+                {selectedId === 'all' && <Check size={14} className="item-check"/>}
+              </div>
+            )}
+
+            {filteredCourses.map(c => {
+              const count = countsByCourse ? countsByCourse(c.id) : 0;
+              const isSelected = selectedId === c.id;
+              return (
+                <div
+                  key={c.id}
+                  className={`course-filter-item ${isSelected ? 'active' : ''}`}
+                  onClick={() => {
+                    onSelect(c.id);
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                >
+                  <div className="course-filter-item-icon">
+                    <BookOpen size={14}/>
+                  </div>
+                  <div className="course-filter-item-text">
+                    <strong>{c.name}</strong>
+                    <small>
+                      {c.subject ? `${c.subject} · ` : ''}{c.teacherName ? `อาจารย์ ${c.teacherName}` : 'ห้องเรียน'}
+                    </small>
+                  </div>
+                  <span className="item-count-badge">{count}</span>
+                  {isSelected && <Check size={14} className="item-check"/>}
+                </div>
+              );
+            })}
+
+            {filteredCourses.length === 0 && search.trim() && (
+              <div className="course-filter-empty">
+                <p>ไม่พบรายวิชาที่ตรงกับ <strong>"{search}"</strong></p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Work({state, states = [], courses = [], profile, open, grade, create}) {
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'overdue' | 'submitted'
   const [courseFilter, setCourseFilter] = useState('all');
@@ -268,68 +416,33 @@ export function Work({state, states = [], courses = [], profile, open, grade, cr
         )}
       </div>
 
-      {/* แถบฟิวเตอร์เลือกรายวิชา (แสดงเฉพาะเมื่อดูภาพรวมทุกห้องเรียนและมีมากกว่า 1 ห้องเรียน) */}
-      {!isSingleClass && availableCourses.length > 1 ? (
-        <div className="work-filter-bar">
-          <div className="filter-title">
-            <Filter size={15}/>
-            <span>รายวิชา:</span>
-          </div>
-          <div className="filter-chips">
-            <button
-              className={`filter-chip ${courseFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setCourseFilter('all')}
-            >
-              ทุกรายวิชา <span className="chip-badge">{allAssignments.length}</span>
+      {/* แถบฟิวเตอร์เลือกรายวิชาและค้นหา */}
+      <div className="work-filter-bar">
+        {!isSingleClass && availableCourses.length > 0 && (
+          <CourseFilterDropdown
+            courses={availableCourses}
+            selectedId={courseFilter}
+            onSelect={setCourseFilter}
+            allCount={allAssignments.length}
+            countsByCourse={cId => allAssignments.filter(p => p.courseId === cId).length}
+          />
+        )}
+        <div className="work-search-box">
+          <Search size={14} className="muted"/>
+          <input
+            type="text"
+            placeholder={isSingleClass ? "ค้นหางานในวิชานี้ หรือไฟล์แนบ…" : "ค้นหางาน หรือไฟล์แนบ…"}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            aria-label="ค้นหางานในชั้นเรียน"
+          />
+          {searchQuery && (
+            <button type="button" className="stream-search-clear" onClick={() => setSearchQuery('')}>
+              <X size={12}/>
             </button>
-            {availableCourses.map(c => {
-              const count = allAssignments.filter(p => p.courseId === c.id).length;
-              return (
-                <button
-                  key={c.id}
-                  className={`filter-chip ${courseFilter === c.id ? 'active' : ''}`}
-                  onClick={() => setCourseFilter(c.id)}
-                >
-                  {c.name} <span className="chip-badge">{count}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="work-search-box">
-            <Search size={14} className="muted"/>
-            <input
-              type="text"
-              placeholder="ค้นหางาน หรือไฟล์แนบ…"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              aria-label="ค้นหางานในชั้นเรียน"
-            />
-            {searchQuery && (
-              <button type="button" className="stream-search-clear" onClick={() => setSearchQuery('')}>
-                <X size={12}/>
-              </button>
-            )}
-          </div>
+          )}
         </div>
-      ) : (
-        <div className="work-filter-bar" style={{justifyContent: 'flex-end'}}>
-          <div className="work-search-box" style={{maxWidth: '320px', width: '100%'}}>
-            <Search size={14} className="muted"/>
-            <input
-              type="text"
-              placeholder="ค้นหางานในวิชานี้ หรือไฟล์แนบ…"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              aria-label="ค้นหางานในชั้นเรียน"
-            />
-            {searchQuery && (
-              <button type="button" className="stream-search-clear" onClick={() => setSearchQuery('')}>
-                <X size={12}/>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* แถบสลับ 3 หมวดหมู่หลัก แยกออกจากกันโดยสิ้นเชิง */}
       <div className="assignment-tabs">
@@ -609,32 +722,13 @@ export function Timeline({state, states = [], courses = [], profile, open}) {
       {/* แถบฟิลเตอร์เลือกรายวิชา */}
       {availableCourses.length > 0 && (
         <div className="work-filter-bar" style={{marginBottom: '20px'}}>
-          <div className="filter-title">
-            <Filter size={15}/>
-            <span>รายวิชา:</span>
-          </div>
-          <div className="filter-chips">
-            <button
-              type="button"
-              className={`filter-chip ${courseFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setCourseFilter('all')}
-            >
-              ทุกรายวิชา <span className="chip-badge">{allPosts.length}</span>
-            </button>
-            {availableCourses.map(c => {
-              const count = allPosts.filter(p => p.courseId === c.id).length;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  className={`filter-chip ${courseFilter === c.id ? 'active' : ''}`}
-                  onClick={() => setCourseFilter(c.id)}
-                >
-                  {c.name} <span className="chip-badge">{count}</span>
-                </button>
-              );
-            })}
-          </div>
+          <CourseFilterDropdown
+            courses={availableCourses}
+            selectedId={courseFilter}
+            onSelect={setCourseFilter}
+            allCount={allPosts.length}
+            countsByCourse={cId => allPosts.filter(p => p.courseId === cId).length}
+          />
         </div>
       )}
 
